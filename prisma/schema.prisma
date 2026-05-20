@@ -1,0 +1,490 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BusinessType {
+  REPAIR_SHOP
+  SERVICE_CENTER
+  REFURBISHER
+  ENTERPRISE
+}
+
+enum TicketStatus {
+  RECEIVED
+  DIAGNOSING
+  ESTIMATE_PENDING
+  WAITING_APPROVAL
+  APPROVED
+  IN_REPAIR
+  WAITING_PARTS
+  SENT_TO_VENDOR
+  READY_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  REFUNDED
+  CANCELLED
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum StaffRole {
+  OWNER
+  ADMIN
+  MANAGER
+  TECHNICIAN
+  FRONT_DESK
+  ACCOUNTANT
+}
+
+enum EstimateStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  DOCUMENT
+}
+
+enum HandoverType {
+  CUSTOMER_TO_BUSINESS
+  STAFF_TO_STAFF
+  BUSINESS_TO_VENDOR
+  VENDOR_TO_BUSINESS
+  BUSINESS_TO_CUSTOMER
+}
+
+model Business {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String       @unique
+  type        BusinessType @default(REPAIR_SHOP)
+  email       String?
+  phone       String?
+  address     String?
+  metadata    Json?
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  deletedAt   DateTime?    @map("deleted_at")
+
+  customers   Customer[]
+  staff       StaffMember[]
+  vendors     Vendor[]
+  tickets     RepairTicket[]
+
+  @@index([deletedAt])
+  @@map("businesses")
+}
+
+model Customer {
+  id          String   @id @default(uuid()) @db.Uuid
+  businessId  String   @map("business_id") @db.Uuid
+  fullName    String   @map("full_name")
+  email       String?
+  phone       String
+  address     String?
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  business    Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  tickets     RepairTicket[]
+
+  @@unique([businessId, phone])
+  @@index([businessId, deletedAt])
+  @@index([businessId, fullName])
+  @@map("customers")
+}
+
+model StaffMember {
+  id           String    @id @default(uuid()) @db.Uuid
+  businessId   String    @map("business_id") @db.Uuid
+  fullName     String    @map("full_name")
+  email        String
+  phone        String?
+  passwordHash String    @map("password_hash")
+  refreshTokenHash String? @map("refresh_token_hash")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  role         StaffRole @default(TECHNICIAN)
+  isActive     Boolean   @default(true) @map("is_active")
+  metadata     Json?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  business          Business              @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  assignedTickets   RepairAssignment[]    @relation("AssignedTechnician")
+  assignedByRecords RepairAssignment[]    @relation("AssignedByStaff")
+  statusLogs        RepairStatusLog[]     @relation("RepairStatusActor")
+  estimatesCreated  RepairEstimate[]      @relation("EstimateCreatedBy")
+  partsUsage        RepairPartsUsage[]    @relation("PartsUsageTechnician")
+  paymentsCollected RepairPayment[]       @relation("PaymentCollectedBy")
+  mediaUploaded     RepairMedia[]         @relation("MediaUploadedBy")
+  notes             RepairNote[]          @relation("NoteCreatedBy")
+  handoversGiven    RepairHandoverLog[]   @relation("HandoverFromStaff")
+  handoversReceived RepairHandoverLog[]   @relation("HandoverToStaff")
+
+  @@unique([businessId, email])
+  @@index([businessId, role, isActive])
+  @@index([businessId, deletedAt])
+  @@map("staff_members")
+}
+
+model Vendor {
+  id          String    @id @default(uuid()) @db.Uuid
+  businessId  String    @map("business_id") @db.Uuid
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  isActive    Boolean   @default(true) @map("is_active")
+  metadata    Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  business    Business            @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  tickets     RepairTicket[]
+  handovers   RepairHandoverLog[]
+
+  @@unique([businessId, name])
+  @@index([businessId, isActive])
+  @@index([businessId, deletedAt])
+  @@map("vendors")
+}
+
+model RepairTicket {
+  id             String       @id @default(uuid()) @db.Uuid
+  businessId     String       @map("business_id") @db.Uuid
+  customerId     String       @map("customer_id") @db.Uuid
+  vendorId       String?      @map("vendor_id") @db.Uuid
+  ticketNumber   String       @map("ticket_number")
+  title          String
+  description    String?
+  status         TicketStatus @default(RECEIVED)
+  priority       Priority     @default(NORMAL)
+  paymentStatus  PaymentStatus @default(PENDING) @map("payment_status")
+  receivedAt     DateTime     @default(now()) @map("received_at")
+  dueAt          DateTime?    @map("due_at")
+  closedAt       DateTime?    @map("closed_at")
+  metadata       Json?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  deletedAt      DateTime?    @map("deleted_at")
+
+  business       Business             @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  customer       Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  vendor         Vendor?              @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  items          RepairTicketItem[]
+  issues         RepairTicketIssue[]
+  statusLogs     RepairStatusLog[]
+  assignments    RepairAssignment[]
+  estimates      RepairEstimate[]
+  partsUsage     RepairPartsUsage[]
+  payments       RepairPayment[]
+  media          RepairMedia[]
+  notes          RepairNote[]
+  handovers      RepairHandoverLog[]
+
+  @@unique([businessId, ticketNumber])
+  @@index([businessId, status, priority])
+  @@index([businessId, customerId])
+  @@index([businessId, vendorId])
+  @@index([businessId, deletedAt])
+  @@map("repair_tickets")
+}
+
+model RepairTicketItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  businessId     String   @map("business_id") @db.Uuid
+  repairTicketId String   @map("repair_ticket_id") @db.Uuid
+  itemType       String   @map("item_type")
+  brand          String?
+  model          String?
+  serialNumber   String?  @map("serial_number")
+  imei           String?
+  condition      String?
+  accessories    Json?
+  lockPin        String?  @map("lock_pin")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  ticket         RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, repairTicketId])
+  @@index([businessId, serialNumber])
+  @@index([businessId, imei])
+  @@index([businessId, deletedAt])
+  @@map("repair_ticket_items")
+}
+
+model RepairTicketIssue {
+  id             String   @id @default(uuid()) @db.Uuid
+  businessId     String   @map("business_id") @db.Uuid
+  repairTicketId String   @map("repair_ticket_id") @db.Uuid
+  title          String
+  description    String?
+  isConfirmed    Boolean  @default(false) @map("is_confirmed")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  ticket         RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, repairTicketId])
+  @@index([businessId, deletedAt])
+  @@map("repair_ticket_issues")
+}
+
+model RepairStatusLog {
+  id             String       @id @default(uuid()) @db.Uuid
+  businessId     String       @map("business_id") @db.Uuid
+  repairTicketId String       @map("repair_ticket_id") @db.Uuid
+  actorStaffId   String?      @map("actor_staff_id") @db.Uuid
+  fromStatus     TicketStatus? @map("from_status")
+  toStatus       TicketStatus @map("to_status")
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  ticket         RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  actor          StaffMember? @relation("RepairStatusActor", fields: [actorStaffId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, repairTicketId, createdAt])
+  @@index([businessId, toStatus])
+  @@map("repair_status_logs")
+}
+
+model RepairAssignment {
+  id                  String           @id @default(uuid()) @db.Uuid
+  businessId          String           @map("business_id") @db.Uuid
+  repairTicketId      String           @map("repair_ticket_id") @db.Uuid
+  assignedToStaffId   String           @map("assigned_to_staff_id") @db.Uuid
+  assignedByStaffId   String?          @map("assigned_by_staff_id") @db.Uuid
+  status              AssignmentStatus @default(ASSIGNED)
+  assignedAt          DateTime         @default(now()) @map("assigned_at")
+  completedAt         DateTime?        @map("completed_at")
+  notes               String?
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  deletedAt           DateTime?        @map("deleted_at")
+
+  ticket              RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  assignedTo          StaffMember  @relation("AssignedTechnician", fields: [assignedToStaffId], references: [id], onDelete: Restrict)
+  assignedBy          StaffMember? @relation("AssignedByStaff", fields: [assignedByStaffId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, repairTicketId])
+  @@index([businessId, assignedToStaffId, status])
+  @@index([businessId, deletedAt])
+  @@map("repair_assignments")
+}
+
+model RepairEstimate {
+  id             String         @id @default(uuid()) @db.Uuid
+  businessId     String         @map("business_id") @db.Uuid
+  repairTicketId String         @map("repair_ticket_id") @db.Uuid
+  createdById    String?        @map("created_by_id") @db.Uuid
+  estimateNumber String         @map("estimate_number")
+  status         EstimateStatus @default(DRAFT)
+  laborAmount    Decimal        @default(0) @map("labor_amount") @db.Decimal(12, 2)
+  partsAmount    Decimal        @default(0) @map("parts_amount") @db.Decimal(12, 2)
+  discountAmount Decimal        @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  taxAmount      Decimal        @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  totalAmount    Decimal        @default(0) @map("total_amount") @db.Decimal(12, 2)
+  validUntil     DateTime?      @map("valid_until")
+  approvedAt     DateTime?      @map("approved_at")
+  rejectedAt     DateTime?      @map("rejected_at")
+  notes          String?
+  metadata       Json?
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  deletedAt      DateTime?      @map("deleted_at")
+
+  ticket         RepairTicket         @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  createdBy      StaffMember?         @relation("EstimateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items          RepairEstimateItem[]
+
+  @@unique([businessId, estimateNumber])
+  @@index([businessId, repairTicketId])
+  @@index([businessId, status])
+  @@index([businessId, deletedAt])
+  @@map("repair_estimates")
+}
+
+model RepairEstimateItem {
+  id               String   @id @default(uuid()) @db.Uuid
+  businessId       String   @map("business_id") @db.Uuid
+  repairEstimateId String   @map("repair_estimate_id") @db.Uuid
+  itemType         String   @map("item_type")
+  name             String
+  description      String?
+  quantity         Decimal  @default(1) @db.Decimal(12, 2)
+  unitAmount       Decimal  @map("unit_amount") @db.Decimal(12, 2)
+  totalAmount      Decimal  @map("total_amount") @db.Decimal(12, 2)
+  metadata         Json?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  estimate         RepairEstimate @relation(fields: [repairEstimateId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, repairEstimateId])
+  @@index([businessId, deletedAt])
+  @@map("repair_estimate_items")
+}
+
+model RepairPartsUsage {
+  id             String   @id @default(uuid()) @db.Uuid
+  businessId     String   @map("business_id") @db.Uuid
+  repairTicketId String   @map("repair_ticket_id") @db.Uuid
+  technicianId   String?  @map("technician_id") @db.Uuid
+  partName       String   @map("part_name")
+  partSku        String?  @map("part_sku")
+  quantity       Decimal  @default(1) @db.Decimal(12, 2)
+  unitCost       Decimal? @map("unit_cost") @db.Decimal(12, 2)
+  totalCost      Decimal? @map("total_cost") @db.Decimal(12, 2)
+  source         String?
+  usedAt         DateTime @default(now()) @map("used_at")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  ticket         RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  technician     StaffMember? @relation("PartsUsageTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, repairTicketId])
+  @@index([businessId, partSku])
+  @@index([businessId, usedAt])
+  @@index([businessId, deletedAt])
+  @@map("repair_parts_usage")
+}
+
+model RepairPayment {
+  id                 String        @id @default(uuid()) @db.Uuid
+  businessId         String        @map("business_id") @db.Uuid
+  repairTicketId     String        @map("repair_ticket_id") @db.Uuid
+  collectedByStaffId String?       @map("collected_by_staff_id") @db.Uuid
+  amount             Decimal       @db.Decimal(12, 2)
+  status             PaymentStatus @default(PENDING)
+  method             String?
+  reference          String?
+  paidAt             DateTime?     @map("paid_at")
+  metadata           Json?
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+  deletedAt          DateTime?     @map("deleted_at")
+
+  ticket             RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  collectedBy        StaffMember? @relation("PaymentCollectedBy", fields: [collectedByStaffId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, repairTicketId])
+  @@index([businessId, status])
+  @@index([businessId, paidAt])
+  @@index([businessId, deletedAt])
+  @@map("repair_payments")
+}
+
+model RepairMedia {
+  id             String    @id @default(uuid()) @db.Uuid
+  businessId     String    @map("business_id") @db.Uuid
+  repairTicketId String    @map("repair_ticket_id") @db.Uuid
+  uploadedById   String?   @map("uploaded_by_id") @db.Uuid
+  type           MediaType
+  url            String
+  fileName       String?   @map("file_name")
+  mimeType       String?   @map("mime_type")
+  sizeBytes      Int?      @map("size_bytes")
+  metadata       Json?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  ticket         RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  uploadedBy     StaffMember? @relation("MediaUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([businessId, repairTicketId])
+  @@index([businessId, type])
+  @@index([businessId, deletedAt])
+  @@map("repair_media")
+}
+
+model RepairNote {
+  id             String   @id @default(uuid()) @db.Uuid
+  businessId     String   @map("business_id") @db.Uuid
+  repairTicketId String   @map("repair_ticket_id") @db.Uuid
+  createdById    String?  @map("created_by_id") @db.Uuid
+  note           String
+  isInternal     Boolean  @default(true) @map("is_internal")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  ticket         RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  createdBy      StaffMember? @relation("NoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([businessId, repairTicketId])
+  @@index([businessId, isInternal])
+  @@index([businessId, deletedAt])
+  @@map("repair_notes")
+}
+
+model RepairHandoverLog {
+  id             String       @id @default(uuid()) @db.Uuid
+  businessId     String       @map("business_id") @db.Uuid
+  repairTicketId String       @map("repair_ticket_id") @db.Uuid
+  vendorId       String?      @map("vendor_id") @db.Uuid
+  fromStaffId    String?      @map("from_staff_id") @db.Uuid
+  toStaffId      String?      @map("to_staff_id") @db.Uuid
+  type           HandoverType
+  notes          String?
+  condition      String?
+  accessories    Json?
+  handedOverAt   DateTime     @default(now()) @map("handed_over_at")
+  metadata       Json?
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  ticket         RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  vendor         Vendor?      @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  fromStaff      StaffMember? @relation("HandoverFromStaff", fields: [fromStaffId], references: [id], onDelete: SetNull)
+  toStaff        StaffMember? @relation("HandoverToStaff", fields: [toStaffId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, repairTicketId, handedOverAt])
+  @@index([businessId, vendorId])
+  @@map("repair_handover_logs")
+}

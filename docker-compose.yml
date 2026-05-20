@@ -1,0 +1,71 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend-repair-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${PORT:-8000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-repair_user}:${POSTGRES_PASSWORD:-repair_password}@postgres:5432/${POSTGRES_DB:-repair_db}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "${PORT:-8000}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://localhost:'' + (process.env.PORT || 8000) + ''/health'').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: backend-repair-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-repair_db}
+      POSTGRES_USER: ${POSTGRES_USER:-repair_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-repair_password}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-repair_user} -d ${POSTGRES_DB:-repair_db}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: backend-repair-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

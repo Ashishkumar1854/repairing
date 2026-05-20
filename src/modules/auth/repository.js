@@ -1,0 +1,116 @@
+const prisma = require("../../core/database/prisma");
+
+const staffSelect = {
+  id: true,
+  businessId: true,
+  fullName: true,
+  email: true,
+  passwordHash: true,
+  refreshTokenHash: true,
+  refreshTokenExpiresAt: true,
+  role: true,
+  isActive: true,
+  deletedAt: true,
+  business: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      type: true,
+      deletedAt: true,
+    },
+  },
+};
+
+const publicStaffSelect = {
+  id: true,
+  businessId: true,
+  fullName: true,
+  email: true,
+  role: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+  business: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      type: true,
+    },
+  },
+};
+
+const findStaffByEmail = (email) =>
+  prisma.staffMember.findMany({
+    where: {
+      email: {
+        equals: email,
+        mode: "insensitive",
+      },
+      deletedAt: null,
+      business: {
+        deletedAt: null,
+      },
+    },
+    select: staffSelect,
+  });
+
+const findStaffById = (staffId) =>
+  prisma.staffMember.findFirst({
+    where: {
+      id: staffId,
+      deletedAt: null,
+      business: {
+        deletedAt: null,
+      },
+    },
+    select: staffSelect,
+  });
+
+const findStaffByIdForBusiness = (staffId, businessId) =>
+  prisma.staffMember.findFirst({
+    where: {
+      id: staffId,
+      businessId,
+      deletedAt: null,
+      business: {
+        deletedAt: null,
+      },
+    },
+    select: publicStaffSelect,
+  });
+
+const updateRefreshToken = (staffId, businessId, refreshTokenHash, refreshTokenExpiresAt) =>
+  prisma.staffMember.updateMany({
+    where: {
+      id: staffId,
+      businessId,
+      deletedAt: null,
+    },
+    data: {
+      refreshTokenHash,
+      refreshTokenExpiresAt,
+    },
+  });
+
+const clearRefreshToken = (staffId, businessId) =>
+  prisma.staffMember.updateMany({
+    where: {
+      id: staffId,
+      businessId,
+      deletedAt: null,
+    },
+    data: {
+      refreshTokenHash: null,
+      refreshTokenExpiresAt: null,
+    },
+  });
+
+module.exports = {
+  findStaffByEmail,
+  findStaffById,
+  findStaffByIdForBusiness,
+  updateRefreshToken,
+  clearRefreshToken,
+};
