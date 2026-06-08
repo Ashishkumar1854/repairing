@@ -1,0 +1,16 @@
+cat > .gitignore << EOF
+# Mac
+.DS_Store
+
+# Dependencies
+**/node_modules
+
+# Environment
+**/.env
+
+# Reports
+*.pdf
+
+# Postman
+*.postman_collection.json
+EOF
