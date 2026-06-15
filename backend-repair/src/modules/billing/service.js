@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 
 const AppError = require("../../shared/errors/AppError");
+const { resolveBranchFilter } = require("../../shared/utils/branchScope");
 const { TICKET_STATUSES } = require("../repair/constants");
 const { assertCanTransition } = require("../repair/workflow");
 const billingRepository = require("./repository");
@@ -143,8 +144,10 @@ const mapRepositoryOutcome = (outcome) => {
 };
 
 const generateInvoice = async (user, ticketId, payload) => {
+  const branchFilter = await resolveBranchFilter(user, payload);
   const ticket = await billingRepository.findTicketBillingContext({
     businessId: user.businessId,
+    branchFilter,
     ticketId,
     estimateId: payload.estimateId,
   });
@@ -204,8 +207,10 @@ const generateInvoice = async (user, ticketId, payload) => {
 };
 
 const listInvoices = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
   const { invoices, total } = await billingRepository.listInvoices({
     businessId: user.businessId,
+    branchFilter,
     page: query.page,
     limit: query.limit,
     status: query.status,
@@ -226,7 +231,8 @@ const listInvoices = async (user, query) => {
 };
 
 const getInvoice = async (user, invoiceId) => {
-  const invoice = await billingRepository.findInvoiceById(user.businessId, invoiceId);
+  const branchFilter = await resolveBranchFilter(user);
+  const invoice = await billingRepository.findInvoiceById(user.businessId, invoiceId, branchFilter);
 
   if (!invoice) {
     throw new AppError("Invoice not found", 404, {
@@ -240,7 +246,8 @@ const getInvoice = async (user, invoiceId) => {
 };
 
 const collectPayment = async (user, invoiceId, payload) => {
-  const invoice = await billingRepository.findInvoiceById(user.businessId, invoiceId);
+  const branchFilter = await resolveBranchFilter(user, payload);
+  const invoice = await billingRepository.findInvoiceById(user.businessId, invoiceId, branchFilter);
 
   if (!invoice) {
     throw new AppError("Invoice not found", 404, {
@@ -268,6 +275,7 @@ const collectPayment = async (user, invoiceId, payload) => {
 
   const result = await billingRepository.collectPayment({
     businessId: user.businessId,
+    branchFilter,
     invoiceId,
     actorStaffId: user.staffId,
     amount: toDecimalString(payload.amount),
@@ -289,8 +297,10 @@ const collectPayment = async (user, invoiceId, payload) => {
 };
 
 const getCustomerLedger = async (user, customerId, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
   const { customer, entries, total } = await billingRepository.getCustomerLedger({
     businessId: user.businessId,
+    branchFilter,
     customerId,
     page: query.page,
     limit: query.limit,

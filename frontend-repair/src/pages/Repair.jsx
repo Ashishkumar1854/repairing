@@ -5,14 +5,15 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { DataTable } from "@/components/ui/DataTable";
-import { Input, Select } from "@/components/ui/Form";
+import { Input, Select, Textarea } from "@/components/ui/Form";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Table, Td, Th } from "@/components/ui/Table";
 import { repairApi } from "@/services/modules";
 import { unwrapArray } from "@/utils/cn";
 import { useNotifyMutation } from "@/hooks/useNotifyMutation";
-import { getAllowedRepairTransitions, ticketStatuses } from "@/utils/workflow";
+import { getAllowedRepairTransitions, isActiveAssignment, ticketStatuses } from "@/utils/workflow";
+import { ticketLabel } from "@/utils/ticketLabel";
 
 export function Repair() {
   const [search, setSearch] = useState("");
@@ -26,7 +27,17 @@ export function Repair() {
       enabled: Boolean(ticket.id),
     })),
   });
-  const ticketsWithCustody = tickets.map((ticket, index) => mergeTicketCustody(ticket, custodyQueries[index]?.data));
+  const assignmentQueries = useQueries({
+    queries: tickets.map((ticket) => ({
+      queryKey: ["repair", ticket.id, "assignments"],
+      queryFn: () => repairApi.assignments(ticket.id),
+      enabled: Boolean(ticket.id),
+    })),
+  });
+  const ticketsWithWorkflow = tickets.map((ticket, index) => {
+    const withCustody = mergeTicketCustody(ticket, custodyQueries[index]?.data);
+    return mergeTicketAssignment(withCustody, assignmentQueries[index]?.data);
+  });
 
   return (
     <>
@@ -40,18 +51,20 @@ export function Repair() {
       <Card>
         <CardContent className="p-0">
           <DataTable
-            rows={ticketsWithCustody}
+            rows={ticketsWithWorkflow}
+            searchable={false}
             emptyTitle="No repair tickets"
             emptyDescription="Create a repair ticket to begin the workflow."
             columns={[
-              { key: "ticketNumber", header: "Ticket Number", render: (ticket) => <Link className="font-semibold text-[var(--primary)]" to={`/repair/${ticket.id}`}>{ticket.ticketNumber}</Link> },
+              { key: "ticketNumber", header: "Repair", render: (ticket) => <Link className="font-semibold text-[var(--primary)]" to={`/repair/${ticket.id}`}>{ticketLabel(ticket)}</Link> },
               { key: "customer", header: "Customer", render: (ticket) => ticket.customer?.fullName || ticket.customerId },
               { key: "device", header: "Device", render: (ticket) => ticket.items?.[0] ? `${ticket.items[0].brand || ""} ${ticket.items[0].model || ""}`.trim() || ticket.items[0].itemType : "Device" },
               { key: "status", header: "Status", render: (ticket) => <StatusBadge status={ticket.status} /> },
               { key: "priority", header: "Priority" },
-              { key: "assigned", header: "Assigned Technician", render: (ticket) => ticket.assignments?.[0]?.assignedTo?.fullName || "Unassigned" },
+              { key: "assigned", header: "Assigned Technician", render: (ticket) => ticket.assignedTechnicianName || "Unassigned" },
               { key: "paymentStatus", header: "Payment Status", render: (ticket) => <StatusBadge status={ticket.paymentStatus} /> },
               { key: "custody", header: "Current Custody Holder", render: (ticket) => <StatusBadge status={ticket.currentHolderType || "RECEPTION"} /> },
+              { key: "next", header: "Next Step", render: (ticket) => <NextRepairStep ticket={ticket} /> },
             ]}
           />
         </CardContent>
@@ -62,6 +75,7 @@ export function Repair() {
 
 export function CreateRepair() {
   const mutation = useNotifyMutation({ mutationFn: repairApi.create, successMessage: "Repair ticket created successfully." });
+  const createdTicket = mutation.data?.data?.ticket;
 
   return (
     <>
@@ -71,21 +85,40 @@ export function CreateRepair() {
           <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
+            const itemName = String(form.get("itemName") || "").trim();
+            const issueDescription = String(form.get("issueDescription") || "").trim();
+            const itemIdentifier = String(form.get("itemIdentifier") || "").trim();
+            const issueTitle = issueDescription.slice(0, 120) || `Issue with ${itemName}`;
+            const identifierPayload = itemIdentifier
+              ? /^\d{14,16}$/.test(itemIdentifier)
+                ? { imei: itemIdentifier }
+                : { serialNumber: itemIdentifier }
+              : {};
             mutation.mutate({
-              customer: { fullName: form.get("fullName"), phone: form.get("phone"), email: form.get("email") || undefined },
-              title: form.get("title"),
-              description: form.get("description"),
+              customer: { fullName: form.get("fullName"), phone: form.get("phone") },
+              title: `${itemName} repair`,
+              description: issueDescription,
               priority: form.get("priority"),
-              items: [{ itemType: "PHONE", brand: form.get("brand"), model: form.get("model"), serialNumber: form.get("serialNumber"), imei: form.get("imei"), condition: form.get("condition"), lockPin: form.get("lockPin") }],
-              issues: [{ title: form.get("issueTitle"), description: form.get("issueDescription") }],
+              items: [{ itemType: "PHONE", brand: itemName, model: itemName, ...identifierPayload }],
+              issues: [{ title: issueTitle, description: issueDescription }],
             });
           }}>
-            <Input name="fullName" placeholder="Customer name" required /><Input name="phone" placeholder="Phone" required /><Input name="email" placeholder="Email" /><Select name="priority" defaultValue="NORMAL"><option>LOW</option><option>NORMAL</option><option>HIGH</option><option>URGENT</option></Select>
-            <Input name="title" placeholder="Repair title" required /><Input name="brand" placeholder="Brand" /><Input name="model" placeholder="Model" /><Input name="serialNumber" placeholder="Serial number" /><Input name="imei" placeholder="IMEI" /><Input name="lockPin" placeholder="Lock PIN" />
-            <Input name="condition" placeholder="Device condition" /><Input name="issueTitle" placeholder="Issue title" required /><Input name="issueDescription" placeholder="Issue description" /><Input name="description" placeholder="Ticket description" />
+            <Input name="fullName" placeholder="Customer name" required />
+            <Input name="phone" placeholder="Phone" required />
+            <Input name="itemName" placeholder="Item Name" required />
+            <Select name="priority" defaultValue="NORMAL"><option>LOW</option><option>NORMAL</option><option>HIGH</option><option>URGENT</option></Select>
+            <Input className="md:col-span-2" name="itemIdentifier" placeholder="IMEI / Serial Number (optional)" />
+            <Textarea className="md:col-span-2" name="issueDescription" placeholder="Issue Description" required />
             <Button className="md:col-span-2" disabled={mutation.isPending}>{mutation.isPending ? "Creating..." : "Create Repair"}</Button>
           </form>
-          {mutation.data ? <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">Repair created: {mutation.data.data?.ticket?.ticketNumber || mutation.data.data?.ticket?.id || "created successfully"}</div> : null}
+          {createdTicket ? (
+            <div className="mt-4 flex flex-col gap-3 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800 md:flex-row md:items-center md:justify-between">
+              <span>Repair created: {ticketLabel(createdTicket)}</span>
+              <Link to={`/assignments?ticketId=${createdTicket.id}`}>
+                <Button size="sm" type="button">Go to Assignment</Button>
+              </Link>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </>
@@ -117,6 +150,29 @@ export function RepairDetails({ id }) {
   );
 }
 
+function NextRepairStep({ ticket }) {
+  const assigned = Boolean(ticket.assignedTechnicianName);
+  const status = ticket.status;
+
+  if (!assigned && !["DELIVERED", "CANCELLED", "CLOSED"].includes(status)) {
+    return <Link to={`/assignments?ticketId=${ticket.id}`}><Button size="sm" type="button">Assign</Button></Link>;
+  }
+
+  if (["DIAGNOSING", "ESTIMATE_PENDING", "WAITING_APPROVAL"].includes(status)) {
+    return <Link to={`/repair/estimates?ticketId=${ticket.id}`}><Button size="sm" type="button">Estimate</Button></Link>;
+  }
+
+  if (["APPROVED", "IN_REPAIR", "WAITING_PARTS"].includes(status)) {
+    return <Link to={`/repair/parts-usage?ticketId=${ticket.id}`}><Button size="sm" type="button">Parts</Button></Link>;
+  }
+
+  if (["READY_FOR_DELIVERY", "DELIVERED"].includes(status)) {
+    return <Link to={`/handover?ticketId=${ticket.id}`}><Button size="sm" type="button">Handover</Button></Link>;
+  }
+
+  return <span className="text-sm text-[var(--muted)]">Review</span>;
+}
+
 function Info({ label, value }) {
   return <div><p className="text-xs font-semibold uppercase text-slate-500">{label}</p><div className="mt-1 text-sm">{value}</div></div>;
 }
@@ -134,4 +190,32 @@ function mergeTicketCustody(ticket, custodyData) {
     currentLocation: custody?.currentLocation || custodyTicket?.currentLocation || ticket.currentLocation,
     lastHandoverAt: custody?.lastHandoverAt || custodyTicket?.lastHandoverAt || ticket.lastHandoverAt,
   };
+}
+
+function mergeTicketAssignment(ticket, assignmentData) {
+  if (!ticket) return ticket;
+
+  const assignmentRecords = unwrapArray(assignmentData, ["assignments", "history", "logs"]);
+  const activeAssignment =
+    assignmentRecords.find(isActiveAssignment) ||
+    (ticket.assignments || []).find(isActiveAssignment) ||
+    assignmentRecords[0] ||
+    ticket.assignments?.[0];
+
+  return {
+    ...ticket,
+    assignedTechnicianName: getTechnicianName(activeAssignment),
+  };
+}
+
+function getTechnicianName(assignment) {
+  const staff = assignment?.assignedTo || assignment?.technician || assignment?.assignedToStaff;
+  return (
+    staff?.fullName ||
+    staff?.name ||
+    assignment?.assignedToName ||
+    assignment?.technicianName ||
+    assignment?.assignedToStaffName ||
+    ""
+  );
 }

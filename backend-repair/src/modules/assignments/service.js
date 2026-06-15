@@ -4,6 +4,7 @@ const { TICKET_STATUSES } = require("../repair/constants");
 const { assertCanTransition } = require("../repair/workflow");
 const assignmentRepository = require("./repository");
 const { ASSIGNMENT_ERRORS, MANAGER_ROLES } = require("./constants");
+const { resolveBranchFilter } = require("../../shared/utils/branchScope");
 
 const mapOutcomeToError = (outcome) => {
   const errorMap = {
@@ -53,9 +54,11 @@ const mapOutcomeToError = (outcome) => {
 
 const assignTechnician = async (user, ticketId, payload) => {
   assertCanTransition(TICKET_STATUSES.RECEIVED, TICKET_STATUSES.DIAGNOSING);
+  const branchFilter = await resolveBranchFilter(user);
 
   const result = await assignmentRepository.createAssignment({
     businessId: user.businessId,
+    branchFilter,
     ticketId,
     technicianId: payload.technicianId,
     actorStaffId: user.staffId,
@@ -76,8 +79,10 @@ const assignTechnician = async (user, ticketId, payload) => {
 };
 
 const reassignTechnician = async (user, ticketId, payload) => {
+  const branchFilter = await resolveBranchFilter(user);
   const result = await assignmentRepository.reassignTicket({
     businessId: user.businessId,
+    branchFilter,
     ticketId,
     technicianId: payload.technicianId,
     actorStaffId: user.staffId,
@@ -99,7 +104,8 @@ const reassignTechnician = async (user, ticketId, payload) => {
 };
 
 const getAssignmentHistory = async (user, ticketId) => {
-  const ticket = await assignmentRepository.findTicketForHistory(user.businessId, ticketId);
+  const branchFilter = await resolveBranchFilter(user);
+  const ticket = await assignmentRepository.findTicketForHistory(user.businessId, ticketId, branchFilter);
 
   if (!ticket) {
     throw new AppError("Repair ticket not found", 404, {
@@ -107,7 +113,7 @@ const getAssignmentHistory = async (user, ticketId) => {
     });
   }
 
-  const assignments = await assignmentRepository.listAssignmentHistory(user.businessId, ticketId);
+  const assignments = await assignmentRepository.listAssignmentHistory(user.businessId, ticketId, branchFilter);
 
   return {
     ticket,
@@ -118,6 +124,7 @@ const getAssignmentHistory = async (user, ticketId) => {
 const getMyQueue = async (user, query) => {
   const { assignments, total } = await assignmentRepository.getTechnicianQueue({
     businessId: user.businessId,
+    branchId: user.branchId,
     technicianId: user.staffId,
     query,
   });
@@ -136,6 +143,7 @@ const getMyQueue = async (user, query) => {
 const getMyDashboard = async (user) => {
   const dashboard = await assignmentRepository.getTechnicianDashboard({
     businessId: user.businessId,
+    branchId: user.branchId,
     technicianId: user.staffId,
   });
 
@@ -158,7 +166,8 @@ const assertTicketOwnershipForTechnician = async (user, ticketId) => {
   const isAssigned = await assignmentRepository.isTechnicianAssignedToTicket(
     user.businessId,
     user.staffId,
-    ticketId
+    ticketId,
+    user.branchId
   );
 
   if (!isAssigned) {

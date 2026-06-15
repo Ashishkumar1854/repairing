@@ -29,6 +29,7 @@ const vendorSelect = {
 
 const ticketSummarySelect = {
   id: true,
+  branchId: true,
   ticketNumber: true,
   title: true,
   status: true,
@@ -80,6 +81,7 @@ const vendorRepairCostLogSelect = {
 const vendorRepairJobSelect = {
   id: true,
   businessId: true,
+  branchId: true,
   repairTicketId: true,
   vendorId: true,
   createdByStaffId: true,
@@ -127,6 +129,7 @@ const vendorRepairJobSelect = {
 
 const listVendorRepairJobSelect = {
   id: true,
+  branchId: true,
   repairTicketId: true,
   vendorId: true,
   externalRef: true,
@@ -185,10 +188,11 @@ const buildVendorWhere = (businessId, query = {}) => {
   return where;
 };
 
-const buildVendorJobWhere = (businessId, query = {}) => {
+const buildVendorJobWhere = (businessId, query = {}, branchFilter = {}) => {
   const where = {
     businessId,
     deletedAt: null,
+    ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
   };
 
   if (query.vendorId) {
@@ -300,30 +304,33 @@ const updateVendor = ({ businessId, vendorId, data }) =>
     data,
   });
 
-const findTicketForVendorRepair = (businessId, ticketId) =>
+const findTicketForVendorRepair = (businessId, ticketId, branchFilter = {}) =>
   prisma.repairTicket.findFirst({
     where: {
       id: ticketId,
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       deletedAt: null,
     },
     select: ticketSummarySelect,
   });
 
-const findVendorRepairJobById = (businessId, jobId) =>
+const findVendorRepairJobById = (businessId, jobId, branchFilter = {}) =>
   prisma.vendorRepairJob.findFirst({
     where: {
       id: jobId,
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       deletedAt: null,
     },
     select: vendorRepairJobSelect,
   });
 
-const findActiveVendorJob = (client, businessId, ticketId) =>
+const findActiveVendorJob = (client, businessId, ticketId, branchId = null) =>
   client.vendorRepairJob.findFirst({
     where: {
       businessId,
+      ...(branchId ? { branchId } : {}),
       repairTicketId: ticketId,
       deletedAt: null,
       status: {
@@ -337,11 +344,12 @@ const findActiveVendorJob = (client, businessId, ticketId) =>
     },
   });
 
-const hydrateVendorRepairJob = (client, businessId, jobId) =>
+const hydrateVendorRepairJob = (client, businessId, jobId, branchId = null) =>
   client.vendorRepairJob.findFirst({
     where: {
       id: jobId,
       businessId,
+      ...(branchId ? { branchId } : {}),
       deletedAt: null,
     },
     select: vendorRepairJobSelect,
@@ -354,6 +362,7 @@ const dispatchVendorRepair = ({
   actorStaffId,
   data,
   workflowTransition,
+  branchFilter = {},
 }) =>
   prisma.$transaction(async (tx) => {
     const [ticket, vendor, activeJob] = await Promise.all([
@@ -361,6 +370,7 @@ const dispatchVendorRepair = ({
         where: {
           id: ticketId,
           businessId,
+          ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
           deletedAt: null,
         },
         select: ticketSummarySelect,
@@ -373,7 +383,7 @@ const dispatchVendorRepair = ({
         },
         select: vendorSelect,
       }),
-      findActiveVendorJob(tx, businessId, ticketId),
+      findActiveVendorJob(tx, businessId, ticketId, branchFilter.branchId),
     ]);
 
     if (!ticket) {
@@ -399,6 +409,7 @@ const dispatchVendorRepair = ({
         where: {
           id: ticketId,
           businessId,
+          branchId: ticket.branchId,
           status: workflowTransition.fromStatus,
           deletedAt: null,
         },
@@ -431,6 +442,7 @@ const dispatchVendorRepair = ({
     const job = await tx.vendorRepairJob.create({
       data: {
         businessId,
+        branchId: ticket.branchId,
         repairTicketId: ticketId,
         vendorId,
         createdByStaffId: actorStaffId,
@@ -453,6 +465,7 @@ const dispatchVendorRepair = ({
     await tx.vendorRepairStatusLog.create({
       data: {
         businessId,
+        branchId: ticket.branchId,
         vendorRepairJobId: job.id,
         actorStaffId,
         previousStatus: null,
@@ -466,6 +479,7 @@ const dispatchVendorRepair = ({
       await tx.vendorRepairCostLog.create({
         data: {
           businessId,
+          branchId: ticket.branchId,
           vendorRepairJobId: job.id,
           actorStaffId,
           estimatedCost: data.estimatedCost,
@@ -479,6 +493,7 @@ const dispatchVendorRepair = ({
     const handover = await tx.repairTicketHandover.create({
       data: {
         businessId,
+        branchId: ticket.branchId,
         repairTicketId: ticketId,
         vendorId,
         actorStaffId,
@@ -515,16 +530,18 @@ const dispatchVendorRepair = ({
       },
     });
 
+    await updateTicketVendorCost(tx, businessId, ticketId, ticket.branchId);
+
     return {
       outcome: "DISPATCHED",
-      job: await hydrateVendorRepairJob(tx, businessId, job.id),
+      job: await hydrateVendorRepairJob(tx, businessId, job.id, ticket.branchId),
     };
   });
 
-const listVendorRepairJobs = async ({ businessId, query }) => {
+const listVendorRepairJobs = async ({ businessId, branchFilter = {}, query }) => {
   const { page, limit } = query;
   const skip = (page - 1) * limit;
-  const where = buildVendorJobWhere(businessId, query);
+  const where = buildVendorJobWhere(businessId, query, branchFilter);
 
   const [jobs, total] = await Promise.all([
     prisma.vendorRepairJob.findMany({
@@ -550,16 +567,18 @@ const listVendorRepairJobs = async ({ businessId, query }) => {
   };
 };
 
-const updateVendorRepairStatus = ({ businessId, jobId, actorStaffId, data }) =>
+const updateVendorRepairStatus = ({ businessId, branchFilter = {}, jobId, actorStaffId, data }) =>
   prisma.$transaction(async (tx) => {
     const job = await tx.vendorRepairJob.findFirst({
       where: {
         id: jobId,
         businessId,
+        ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
         deletedAt: null,
       },
       select: {
         id: true,
+        branchId: true,
         status: true,
       },
     });
@@ -588,6 +607,7 @@ const updateVendorRepairStatus = ({ businessId, jobId, actorStaffId, data }) =>
     await tx.vendorRepairStatusLog.create({
       data: {
         businessId,
+        branchId: job.branchId,
         vendorRepairJobId: jobId,
         actorStaffId,
         previousStatus: job.status,
@@ -599,20 +619,22 @@ const updateVendorRepairStatus = ({ businessId, jobId, actorStaffId, data }) =>
 
     return {
       outcome: "UPDATED",
-      job: await hydrateVendorRepairJob(tx, businessId, jobId),
+      job: await hydrateVendorRepairJob(tx, businessId, jobId, job.branchId),
     };
   });
 
-const receiveVendorRepair = ({ businessId, jobId, actorStaffId, data, workflowTransition }) =>
+const receiveVendorRepair = ({ businessId, branchFilter = {}, jobId, actorStaffId, data, workflowTransition }) =>
   prisma.$transaction(async (tx) => {
     const job = await tx.vendorRepairJob.findFirst({
       where: {
         id: jobId,
         businessId,
+        ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
         deletedAt: null,
       },
       select: {
         id: true,
+        branchId: true,
         status: true,
         vendorId: true,
         repairTicketId: true,
@@ -638,6 +660,7 @@ const receiveVendorRepair = ({ businessId, jobId, actorStaffId, data, workflowTr
         where: {
           id: job.repairTicketId,
           businessId,
+          branchId: job.branchId,
           status: workflowTransition.fromStatus,
           deletedAt: null,
         },
@@ -681,6 +704,7 @@ const receiveVendorRepair = ({ businessId, jobId, actorStaffId, data, workflowTr
     await tx.vendorRepairStatusLog.create({
       data: {
         businessId,
+        branchId: job.branchId,
         vendorRepairJobId: jobId,
         actorStaffId,
         previousStatus: job.status,
@@ -693,6 +717,7 @@ const receiveVendorRepair = ({ businessId, jobId, actorStaffId, data, workflowTr
     const handover = await tx.repairTicketHandover.create({
       data: {
         businessId,
+        branchId: job.branchId,
         repairTicketId: job.repairTicketId,
         vendorId: job.vendorId,
         actorStaffId,
@@ -728,22 +753,26 @@ const receiveVendorRepair = ({ businessId, jobId, actorStaffId, data, workflowTr
       },
     });
 
+    await updateTicketVendorCost(tx, businessId, job.repairTicketId, job.branchId);
+
     return {
       outcome: "RECEIVED",
-      job: await hydrateVendorRepairJob(tx, businessId, jobId),
+      job: await hydrateVendorRepairJob(tx, businessId, jobId, job.branchId),
     };
   });
 
-const recordVendorRepairCost = ({ businessId, jobId, actorStaffId, data }) =>
+const recordVendorRepairCost = ({ businessId, branchFilter = {}, jobId, actorStaffId, data }) =>
   prisma.$transaction(async (tx) => {
     const job = await tx.vendorRepairJob.findFirst({
       where: {
         id: jobId,
         businessId,
+        ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
         deletedAt: null,
       },
       select: {
         id: true,
+        branchId: true,
         costStatus: true,
         estimatedCost: true,
         approvedCost: true,
@@ -772,6 +801,7 @@ const recordVendorRepairCost = ({ businessId, jobId, actorStaffId, data }) =>
     await tx.vendorRepairCostLog.create({
       data: {
         businessId,
+        branchId: job.branchId,
         vendorRepairJobId: jobId,
         actorStaffId,
         previousEstimatedCost: job.estimatedCost,
@@ -787,11 +817,61 @@ const recordVendorRepairCost = ({ businessId, jobId, actorStaffId, data }) =>
       },
     });
 
+    await updateTicketVendorCost(tx, businessId, job.repairTicketId, job.branchId);
+
     return {
       outcome: "COST_RECORDED",
-      job: await hydrateVendorRepairJob(tx, businessId, jobId),
+      job: await hydrateVendorRepairJob(tx, businessId, jobId, job.branchId),
     };
   });
+
+const toNumber = (value) => Number(value || 0);
+const toDecimalString = (value) => Number(value || 0).toFixed(2);
+
+const updateTicketVendorCost = async (tx, businessId, ticketId, branchId) => {
+  const jobs = await tx.vendorRepairJob.findMany({
+    where: {
+      repairTicketId: ticketId,
+      businessId,
+      branchId,
+      deletedAt: null,
+    },
+    select: {
+      estimatedCost: true,
+      approvedCost: true,
+      finalCost: true,
+    },
+  });
+
+  const vendorCostSum = jobs.reduce((sum, job) => {
+    const cost = job.finalCost || job.approvedCost || job.estimatedCost || 0;
+    return sum + toNumber(cost);
+  }, 0);
+
+  const ticket = await tx.repairTicket.findFirst({
+    where: { id: ticketId },
+    select: {
+      laborCost: true,
+      partsCost: true,
+      finalInvoiceAmount: true,
+    },
+  });
+
+  if (ticket) {
+    const laborCost = toNumber(ticket.laborCost);
+    const partsCost = toNumber(ticket.partsCost);
+    const finalInvoiceAmount = toNumber(ticket.finalInvoiceAmount);
+    const profitEstimate = finalInvoiceAmount - laborCost - partsCost - vendorCostSum;
+
+    await tx.repairTicket.update({
+      where: { id: ticketId },
+      data: {
+        vendorCost: toDecimalString(vendorCostSum),
+        profitEstimate: toDecimalString(profitEstimate),
+      },
+    });
+  }
+};
 
 module.exports = {
   createVendor,

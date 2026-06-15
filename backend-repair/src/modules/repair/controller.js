@@ -50,9 +50,23 @@ const updateTicketStatus = asyncHandler(async (req, res) => {
   });
 });
 
+const updateTicketExecution = asyncHandler(async (req, res) => {
+  const result = await repairService.updateTicketExecution(
+    req.user,
+    req.validatedData.params.id,
+    req.validatedData.body
+  );
+
+  return sendSuccess(res, {
+    message: "Repair ticket execution details updated",
+    data: result,
+  });
+});
+
 module.exports = {
   createTicket,
   listTickets,
   getTicket,
   updateTicketStatus,
+  updateTicketExecution,
 };

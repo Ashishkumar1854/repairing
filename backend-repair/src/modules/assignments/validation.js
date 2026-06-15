@@ -18,6 +18,7 @@ const assignTechnicianSchema = z.object({
   body: z.object({
     technicianId: uuidSchema,
     notes: z.string().trim().max(1000).optional(),
+    branchId: uuidSchema.optional(),
     metadata: metadataSchema,
   }),
 });
@@ -30,6 +31,7 @@ const reassignTechnicianSchema = z.object({
     technicianId: uuidSchema,
     reason: z.string().trim().min(3).max(1000),
     notes: z.string().trim().max(1000).optional(),
+    branchId: uuidSchema.optional(),
     metadata: metadataSchema,
   }),
 });
@@ -38,6 +40,9 @@ const getAssignmentHistorySchema = z.object({
   params: z.object({
     id: uuidSchema,
   }),
+  query: z.object({
+    branchId: uuidSchema.optional(),
+  }).optional(),
 });
 
 const technicianQueueSchema = z.object({
@@ -46,6 +51,7 @@ const technicianQueueSchema = z.object({
     limit: z.coerce.number().int().positive().max(100).default(20),
     status: ticketStatusSchema.optional(),
     priority: prioritySchema.optional(),
+    statusGroup: z.enum(["assigned", "active", "pending_review", "completed"]).optional(),
     waitingApproval: queryBooleanSchema.optional(),
     waitingParts: queryBooleanSchema.optional(),
     overdueOnly: queryBooleanSchema.optional(),

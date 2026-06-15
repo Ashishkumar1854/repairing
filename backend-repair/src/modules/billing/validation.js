@@ -32,6 +32,7 @@ const generateInvoiceSchema = z.object({
     taxRate: taxRateSchema.default(0),
     dueDate: z.coerce.date().optional(),
     notes: z.string().trim().max(2000).optional(),
+    branchId: uuidSchema.optional(),
     metadata: metadataSchema,
   }),
 });
@@ -44,6 +45,7 @@ const listInvoicesSchema = z.object({
     customerId: uuidSchema.optional(),
     repairTicketId: uuidSchema.optional(),
     search: z.string().trim().min(1).max(120).optional(),
+    branchId: uuidSchema.optional(),
   }),
 });
 
@@ -51,6 +53,9 @@ const getInvoiceSchema = z.object({
   params: z.object({
     id: uuidSchema,
   }),
+  query: z.object({
+    branchId: uuidSchema.optional(),
+  }).optional(),
 });
 
 const collectPaymentSchema = z.object({
@@ -62,6 +67,7 @@ const collectPaymentSchema = z.object({
     method: z.enum(Object.values(PAYMENT_METHODS)),
     transactionReference: z.string().trim().max(160).optional(),
     notes: z.string().trim().max(1000).optional(),
+    branchId: uuidSchema.optional(),
     metadata: metadataSchema,
   }),
 });
@@ -73,6 +79,7 @@ const customerLedgerSchema = z.object({
   query: z.object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(100).default(20),
+    branchId: uuidSchema.optional(),
   }),
 });
 

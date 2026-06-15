@@ -17,6 +17,7 @@ module.exports = {
     analyticsService.getOwnerDashboard,
     "Owner dashboard analytics retrieved successfully"
   ),
+
   getRepairSummary: makeHandler(
     analyticsService.getRepairSummary,
     "Repair analytics summary retrieved successfully"

@@ -3,6 +3,7 @@ const prisma = require("../../core/database/prisma");
 const customerSelect = {
   id: true,
   businessId: true,
+  branchId: true,
   fullName: true,
   email: true,
   phone: true,
@@ -16,10 +17,11 @@ const customerSelect = {
   },
 };
 
-const searchCustomers = ({ businessId, query, limit }) =>
+const searchCustomers = ({ businessId, branchFilter = {}, query, limit }) =>
   prisma.customer.findMany({
     where: {
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       deletedAt: null,
       OR: [
         { fullName: { contains: query, mode: "insensitive" } },
@@ -34,19 +36,21 @@ const searchCustomers = ({ businessId, query, limit }) =>
     take: limit,
   });
 
-const findCustomerById = (businessId, customerId) =>
+const findCustomerById = (businessId, customerId, branchFilter = {}) =>
   prisma.customer.findFirst({
     where: {
       id: customerId,
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       deletedAt: null,
     },
     select: customerSelect,
   });
 
-const getCustomerTickets = async ({ businessId, customerId, page, limit }) => {
+const getCustomerTickets = async ({ businessId, branchFilter = {}, customerId, page, limit }) => {
   const where = {
     businessId,
+    ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
     customerId,
     deletedAt: null,
   };

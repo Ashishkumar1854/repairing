@@ -3,6 +3,7 @@ const prisma = require("../../core/database/prisma");
 const inventoryItemSelect = {
   id: true,
   businessId: true,
+  branchId: true,
   vendorId: true,
   sku: true,
   partName: true,
@@ -27,6 +28,7 @@ const inventoryItemSelect = {
 
 const movementSelect = {
   id: true,
+  branchId: true,
   type: true,
   quantityBefore: true,
   quantityChanged: true,
@@ -46,6 +48,7 @@ const movementSelect = {
 
 const partsUsageSelect = {
   id: true,
+  branchId: true,
   repairTicketId: true,
   inventoryItemId: true,
   partName: true,
@@ -77,11 +80,12 @@ const partsUsageSelect = {
 const toNumber = (value) => Number(value || 0);
 const toDecimalString = (value) => Number(value || 0).toFixed(2);
 
-const createInventoryItem = ({ businessId, actorStaffId, data }) =>
+const createInventoryItem = ({ businessId, branchId, actorStaffId, data }) =>
   prisma.$transaction(async (tx) => {
     const item = await tx.inventoryItem.create({
       data: {
         businessId,
+        branchId,
         vendorId: data.vendorId,
         sku: data.sku,
         partName: data.partName,
@@ -102,6 +106,7 @@ const createInventoryItem = ({ businessId, actorStaffId, data }) =>
       await tx.inventoryStockMovement.create({
         data: {
           businessId,
+          branchId,
           inventoryItemId: item.id,
           actorStaffId,
           type: "STOCK_IN",
@@ -120,9 +125,10 @@ const createInventoryItem = ({ businessId, actorStaffId, data }) =>
     return item;
   });
 
-const buildInventoryWhere = ({ businessId, search, category, isActive }) => {
+const buildInventoryWhere = ({ businessId, branchFilter = {}, search, category, isActive }) => {
   const where = {
     businessId,
+    ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
     deletedAt: null,
   };
 
@@ -151,6 +157,7 @@ const buildInventoryWhere = ({ businessId, search, category, isActive }) => {
 
 const listInventoryItems = async ({
   businessId,
+  branchFilter,
   page,
   limit,
   search,
@@ -158,7 +165,7 @@ const listInventoryItems = async ({
   isActive,
   lowStockOnly,
 }) => {
-  const where = buildInventoryWhere({ businessId, search, category, isActive });
+  const where = buildInventoryWhere({ businessId, branchFilter, search, category, isActive });
   const skip = (page - 1) * limit;
 
   if (lowStockOnly) {
@@ -199,11 +206,12 @@ const listInventoryItems = async ({
   };
 };
 
-const findInventoryItemById = (businessId, itemId) =>
+const findInventoryItemById = (businessId, itemId, branchFilter = {}) =>
   prisma.inventoryItem.findFirst({
     where: {
       id: itemId,
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       deletedAt: null,
     },
     select: {
@@ -218,26 +226,29 @@ const findInventoryItemById = (businessId, itemId) =>
     },
   });
 
-const findTicketForConsumption = (businessId, ticketId) =>
+const findTicketForConsumption = (businessId, ticketId, branchFilter = {}) =>
   prisma.repairTicket.findFirst({
     where: {
       id: ticketId,
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       deletedAt: null,
     },
     select: {
       id: true,
+      branchId: true,
       status: true,
       ticketNumber: true,
     },
   });
 
-const updateInventoryItem = ({ businessId, itemId, actorStaffId, data }) =>
+const updateInventoryItem = ({ businessId, branchFilter = {}, itemId, actorStaffId, data }) =>
   prisma.$transaction(async (tx) => {
     const current = await tx.inventoryItem.findFirst({
       where: {
         id: itemId,
         businessId,
+        ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
         deletedAt: null,
       },
       select: inventoryItemSelect,
@@ -284,6 +295,7 @@ const updateInventoryItem = ({ businessId, itemId, actorStaffId, data }) =>
         await tx.inventoryStockMovement.create({
           data: {
             businessId,
+            branchId: current.branchId,
             inventoryItemId: itemId,
             actorStaffId,
             type: "ADJUSTMENT",
@@ -303,16 +315,18 @@ const updateInventoryItem = ({ businessId, itemId, actorStaffId, data }) =>
     return updated;
   });
 
-const consumePartsForTicket = ({ businessId, ticketId, actorStaffId, parts, technicianNotes, moveToInRepair, metadata }) =>
+const consumePartsForTicket = ({ businessId, branchFilter = {}, ticketId, actorStaffId, parts, technicianNotes, moveToInRepair, metadata }) =>
   prisma.$transaction(async (tx) => {
     const ticket = await tx.repairTicket.findFirst({
       where: {
         id: ticketId,
         businessId,
+        ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
         deletedAt: null,
       },
       select: {
         id: true,
+        branchId: true,
         status: true,
       },
     });
@@ -328,6 +342,7 @@ const consumePartsForTicket = ({ businessId, ticketId, actorStaffId, parts, tech
         where: {
           id: ticketId,
           businessId,
+          branchId: ticket.branchId,
           status: ticket.status,
           deletedAt: null,
         },
@@ -362,6 +377,7 @@ const consumePartsForTicket = ({ businessId, ticketId, actorStaffId, parts, tech
         where: {
           id: part.inventoryItemId,
           businessId,
+          branchId: ticket.branchId,
           deletedAt: null,
         },
         select: {
@@ -394,6 +410,7 @@ const consumePartsForTicket = ({ businessId, ticketId, actorStaffId, parts, tech
         where: {
           id: item.id,
           businessId,
+          branchId: ticket.branchId,
           deletedAt: null,
           isActive: true,
           stockQuantity: {
@@ -414,6 +431,7 @@ const consumePartsForTicket = ({ businessId, ticketId, actorStaffId, parts, tech
       const usage = await tx.repairPartsUsage.create({
         data: {
           businessId,
+          branchId: ticket.branchId,
           repairTicketId: ticketId,
           inventoryItemId: item.id,
           technicianId: actorStaffId,
@@ -436,6 +454,7 @@ const consumePartsForTicket = ({ businessId, ticketId, actorStaffId, parts, tech
       await tx.inventoryStockMovement.create({
         data: {
           businessId,
+          branchId: ticket.branchId,
           inventoryItemId: item.id,
           repairTicketId: ticketId,
           actorStaffId,
@@ -453,6 +472,52 @@ const consumePartsForTicket = ({ businessId, ticketId, actorStaffId, parts, tech
         },
       });
     }
+
+    // Update ticket partsCost and profitEstimate
+    const allUsages = await tx.repairPartsUsage.findMany({
+      where: {
+        repairTicketId: ticketId,
+        businessId,
+        branchId: ticket.branchId,
+        deletedAt: null,
+      },
+      select: {
+        totalCost: true,
+      },
+    });
+
+    const partsCostSum = allUsages.reduce((sum, u) => sum + toNumber(u.totalCost), 0);
+
+    const currentTicketDetails = await tx.repairTicket.findFirst({
+      where: {
+        id: ticketId,
+        businessId,
+        branchId: ticket.branchId,
+      },
+      select: {
+        laborCost: true,
+        vendorCost: true,
+        finalInvoiceAmount: true,
+      },
+    });
+
+    const laborCost = toNumber(currentTicketDetails?.laborCost);
+    const vendorCost = toNumber(currentTicketDetails?.vendorCost);
+    const finalInvoiceAmount = toNumber(currentTicketDetails?.finalInvoiceAmount);
+
+    const totalRepairCost = laborCost + partsCostSum;
+    const profitEstimate = finalInvoiceAmount - laborCost - partsCostSum - vendorCost;
+
+    await tx.repairTicket.update({
+      where: {
+        id: ticketId,
+      },
+      data: {
+        partsCost: toDecimalString(partsCostSum),
+        totalRepairCost: toDecimalString(totalRepairCost),
+        profitEstimate: toDecimalString(profitEstimate),
+      },
+    });
 
     if (technicianNotes.length > 0) {
       await tx.repairNote.createMany({
@@ -473,6 +538,7 @@ const consumePartsForTicket = ({ businessId, ticketId, actorStaffId, parts, tech
           in: usageIds,
         },
         businessId,
+        branchId: ticket.branchId,
       },
       select: partsUsageSelect,
       orderBy: {
@@ -487,10 +553,11 @@ const consumePartsForTicket = ({ businessId, ticketId, actorStaffId, parts, tech
     };
   });
 
-const getTicketPartsUsage = (businessId, ticketId) =>
+const getTicketPartsUsage = (businessId, ticketId, branchFilter = {}) =>
   prisma.repairPartsUsage.findMany({
     where: {
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       repairTicketId: ticketId,
       deletedAt: null,
     },

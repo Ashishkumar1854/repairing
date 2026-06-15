@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { BranchProvider } from "@/contexts/BranchContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { AppRoutes } from "@/routes/AppRoutes";
 import { queryClient } from "@/app/queryClient";
@@ -14,7 +15,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <BrowserRouter>
         <ToastProvider>
           <AuthProvider>
-            <AppRoutes />
+            <BranchProvider>
+              <AppRoutes />
+            </BranchProvider>
           </AuthProvider>
         </ToastProvider>
       </BrowserRouter>

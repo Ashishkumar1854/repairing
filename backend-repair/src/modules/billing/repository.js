@@ -58,6 +58,7 @@ const auditSelect = {
 const invoiceSelect = {
   id: true,
   businessId: true,
+  branchId: true,
   repairTicketId: true,
   customerId: true,
   estimateId: true,
@@ -78,6 +79,7 @@ const invoiceSelect = {
   ticket: {
     select: {
       id: true,
+      branchId: true,
       ticketNumber: true,
       title: true,
       status: true,
@@ -129,6 +131,7 @@ const invoiceSelect = {
 
 const listInvoiceSelect = {
   id: true,
+  branchId: true,
   invoiceNumber: true,
   status: true,
   subtotalAmount: true,
@@ -142,6 +145,7 @@ const listInvoiceSelect = {
   ticket: {
     select: {
       id: true,
+      branchId: true,
       ticketNumber: true,
       title: true,
       status: true,
@@ -158,6 +162,7 @@ const listInvoiceSelect = {
 
 const ledgerSelect = {
   id: true,
+  branchId: true,
   type: true,
   debitAmount: true,
   creditAmount: true,
@@ -192,10 +197,11 @@ const ledgerSelect = {
 const toNumber = (value) => Number(value || 0);
 const toDecimalString = (value) => Number(value || 0).toFixed(2);
 
-const getLastCustomerLedgerBalance = async (tx, businessId, customerId) => {
+const getLastCustomerLedgerBalance = async (tx, businessId, branchId, customerId) => {
   const lastEntry = await tx.customerFinancialLedger.findFirst({
     where: {
       businessId,
+      branchId,
       customerId,
     },
     orderBy: {
@@ -209,16 +215,18 @@ const getLastCustomerLedgerBalance = async (tx, businessId, customerId) => {
   return toNumber(lastEntry?.runningBalance);
 };
 
-const findTicketBillingContext = ({ businessId, ticketId, estimateId }) =>
+const findTicketBillingContext = ({ businessId, branchFilter = {}, ticketId, estimateId }) =>
   prisma.repairTicket.findFirst({
     where: {
       id: ticketId,
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       deletedAt: null,
     },
     select: {
       id: true,
       businessId: true,
+      branchId: true,
       customerId: true,
       ticketNumber: true,
       title: true,
@@ -235,6 +243,7 @@ const findTicketBillingContext = ({ businessId, ticketId, estimateId }) =>
       estimates: {
         where: {
           businessId,
+          ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
           deletedAt: null,
           status: "APPROVED",
           ...(estimateId ? { id: estimateId } : {}),
@@ -271,6 +280,7 @@ const findTicketBillingContext = ({ businessId, ticketId, estimateId }) =>
       partsUsage: {
         where: {
           businessId,
+          ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
           deletedAt: null,
         },
         select: {
@@ -310,10 +320,12 @@ const createInvoice = ({
       where: {
         id: ticket.id,
         businessId,
+        branchId: ticket.branchId,
         deletedAt: null,
       },
       select: {
         id: true,
+        branchId: true,
         customerId: true,
       },
     });
@@ -325,6 +337,7 @@ const createInvoice = ({
     const invoice = await tx.repairInvoice.create({
       data: {
         businessId,
+        branchId: existingTicket.branchId,
         repairTicketId: ticket.id,
         customerId: ticket.customerId,
         estimateId,
@@ -360,12 +373,43 @@ const createInvoice = ({
       },
     });
 
-    const previousBalance = await getLastCustomerLedgerBalance(tx, businessId, ticket.customerId);
+    const ticketDetails = await tx.repairTicket.findFirst({
+      where: {
+        id: ticket.id,
+        businessId,
+      },
+      select: {
+        laborCost: true,
+        partsCost: true,
+        vendorCost: true,
+      },
+    });
+
+    if (ticketDetails) {
+      const laborCost = toNumber(ticketDetails.laborCost);
+      const partsCost = toNumber(ticketDetails.partsCost);
+      const vendorCost = toNumber(ticketDetails.vendorCost);
+      const finalInvoiceAmountVal = toNumber(totalAmount);
+      const profitEstimate = finalInvoiceAmountVal - laborCost - partsCost - vendorCost;
+
+      await tx.repairTicket.update({
+        where: {
+          id: ticket.id,
+        },
+        data: {
+          finalInvoiceAmount: toDecimalString(finalInvoiceAmountVal),
+          profitEstimate: toDecimalString(profitEstimate),
+        },
+      });
+    }
+
+    const previousBalance = await getLastCustomerLedgerBalance(tx, businessId, existingTicket.branchId, ticket.customerId);
     const runningBalance = previousBalance + toNumber(totalAmount);
 
     await tx.customerFinancialLedger.create({
       data: {
         businessId,
+        branchId: existingTicket.branchId,
         customerId: ticket.customerId,
         repairInvoiceId: invoice.id,
         actorStaffId,
@@ -384,6 +428,7 @@ const createInvoice = ({
       data: [
         {
           businessId,
+          branchId: existingTicket.branchId,
           repairInvoiceId: invoice.id,
           actorStaffId,
           action: FINANCIAL_AUDIT_ACTIONS.INVOICE_CREATED,
@@ -399,6 +444,7 @@ const createInvoice = ({
         },
         {
           businessId,
+          branchId: existingTicket.branchId,
           repairInvoiceId: invoice.id,
           actorStaffId,
           action: FINANCIAL_AUDIT_ACTIONS.INVOICE_ISSUED,
@@ -414,6 +460,7 @@ const createInvoice = ({
       where: {
         id: invoice.id,
         businessId,
+        branchId: existingTicket.branchId,
       },
       select: invoiceSelect,
     });
@@ -424,9 +471,10 @@ const createInvoice = ({
     };
   });
 
-const buildInvoiceWhere = ({ businessId, status, customerId, repairTicketId, search }) => {
+const buildInvoiceWhere = ({ businessId, branchFilter = {}, status, customerId, repairTicketId, search }) => {
   const where = {
     businessId,
+    ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
     deletedAt: null,
   };
 
@@ -446,8 +494,8 @@ const buildInvoiceWhere = ({ businessId, status, customerId, repairTicketId, sea
   return where;
 };
 
-const listInvoices = async ({ businessId, page, limit, status, customerId, repairTicketId, search }) => {
-  const where = buildInvoiceWhere({ businessId, status, customerId, repairTicketId, search });
+const listInvoices = async ({ businessId, branchFilter, page, limit, status, customerId, repairTicketId, search }) => {
+  const where = buildInvoiceWhere({ businessId, branchFilter, status, customerId, repairTicketId, search });
   const skip = (page - 1) * limit;
 
   const [total, invoices] = await prisma.$transaction([
@@ -469,11 +517,12 @@ const listInvoices = async ({ businessId, page, limit, status, customerId, repai
   };
 };
 
-const findInvoiceById = (businessId, invoiceId) =>
+const findInvoiceById = (businessId, invoiceId, branchFilter = {}) =>
   prisma.repairInvoice.findFirst({
     where: {
       id: invoiceId,
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       deletedAt: null,
     },
     select: invoiceSelect,
@@ -489,16 +538,19 @@ const collectPayment = ({
   notes,
   metadata,
   deliverIfReady,
+  branchFilter = {},
 }) =>
   prisma.$transaction(async (tx) => {
     const invoice = await tx.repairInvoice.findFirst({
       where: {
         id: invoiceId,
         businessId,
+        ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
         deletedAt: null,
       },
       select: {
         id: true,
+        branchId: true,
         repairTicketId: true,
         customerId: true,
         status: true,
@@ -534,6 +586,7 @@ const collectPayment = ({
     const payment = await tx.repairPayment.create({
       data: {
         businessId,
+        branchId: invoice.branchId,
         repairTicketId: invoice.repairTicketId,
         repairInvoiceId: invoice.id,
         collectedByStaffId: actorStaffId,
@@ -565,6 +618,7 @@ const collectPayment = ({
       where: {
         id: invoice.repairTicketId,
         businessId,
+        branchId: invoice.branchId,
         deletedAt: null,
       },
       data: {
@@ -572,12 +626,13 @@ const collectPayment = ({
       },
     });
 
-    const previousBalance = await getLastCustomerLedgerBalance(tx, businessId, invoice.customerId);
+    const previousBalance = await getLastCustomerLedgerBalance(tx, businessId, invoice.branchId, invoice.customerId);
     const runningBalance = previousBalance - toNumber(amount);
 
     await tx.customerFinancialLedger.create({
       data: {
         businessId,
+        branchId: invoice.branchId,
         customerId: invoice.customerId,
         repairInvoiceId: invoice.id,
         repairPaymentId: payment.id,
@@ -597,6 +652,7 @@ const collectPayment = ({
       data: [
         {
           businessId,
+          branchId: invoice.branchId,
           repairInvoiceId: invoice.id,
           repairPaymentId: payment.id,
           actorStaffId,
@@ -612,6 +668,7 @@ const collectPayment = ({
         },
         {
           businessId,
+          branchId: invoice.branchId,
           repairInvoiceId: invoice.id,
           repairPaymentId: payment.id,
           actorStaffId,
@@ -635,6 +692,7 @@ const collectPayment = ({
         where: {
           id: invoice.repairTicketId,
           businessId,
+          branchId: invoice.branchId,
           status: TICKET_STATUSES.READY_FOR_DELIVERY,
           deletedAt: null,
         },
@@ -665,6 +723,7 @@ const collectPayment = ({
       where: {
         id: payment.id,
         businessId,
+        branchId: invoice.branchId,
       },
       select: paymentSelect,
     });
@@ -673,6 +732,7 @@ const collectPayment = ({
       where: {
         id: invoice.id,
         businessId,
+        branchId: invoice.branchId,
       },
       select: invoiceSelect,
     });
@@ -684,14 +744,16 @@ const collectPayment = ({
     };
   });
 
-const getCustomerLedger = async ({ businessId, customerId, page, limit }) => {
+const getCustomerLedger = async ({ businessId, branchFilter = {}, customerId, page, limit }) => {
   const skip = (page - 1) * limit;
+  const branchWhere = branchFilter.branchId ? { branchId: branchFilter.branchId } : {};
 
   const [customer, total, entries] = await prisma.$transaction([
     prisma.customer.findFirst({
       where: {
         id: customerId,
         businessId,
+        ...branchWhere,
         deletedAt: null,
       },
       select: {
@@ -704,12 +766,14 @@ const getCustomerLedger = async ({ businessId, customerId, page, limit }) => {
     prisma.customerFinancialLedger.count({
       where: {
         businessId,
+        ...branchWhere,
         customerId,
       },
     }),
     prisma.customerFinancialLedger.findMany({
       where: {
         businessId,
+        ...branchWhere,
         customerId,
       },
       select: ledgerSelect,

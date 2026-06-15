@@ -21,6 +21,7 @@ const createInventoryItemSchema = z.object({
     sellingPrice: moneySchema.optional(),
     reorderLevel: quantitySchema.default(0),
     vendorId: uuidSchema.optional(),
+    branchId: uuidSchema.optional(),
     barcode: z.string().trim().max(120).optional(),
     notes: z.string().trim().max(1000).optional(),
     metadata: metadataSchema,
@@ -35,6 +36,7 @@ const listInventoryItemsSchema = z.object({
     category: z.string().trim().max(120).optional(),
     isActive: queryBooleanSchema.optional(),
     lowStockOnly: queryBooleanSchema.optional().default(false),
+    branchId: uuidSchema.optional(),
   }),
 });
 
@@ -56,6 +58,7 @@ const updateInventoryItemSchema = z.object({
       sellingPrice: moneySchema.optional(),
       reorderLevel: quantitySchema.optional(),
       vendorId: uuidSchema.nullable().optional(),
+      branchId: uuidSchema.optional(),
       barcode: z.string().trim().max(120).nullable().optional(),
       isActive: z.boolean().optional(),
       stockQuantity: quantitySchema.optional(),
@@ -90,6 +93,7 @@ const consumePartsSchema = z.object({
       )
       .max(20)
       .optional(),
+    branchId: uuidSchema.optional(),
     metadata: metadataSchema,
   }),
 });
@@ -98,6 +102,9 @@ const partsUsageHistorySchema = z.object({
   params: z.object({
     id: uuidSchema,
   }),
+  query: z.object({
+    branchId: uuidSchema.optional(),
+  }).optional(),
 });
 
 module.exports = {

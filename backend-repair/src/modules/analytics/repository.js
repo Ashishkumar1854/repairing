@@ -29,6 +29,11 @@ const buildDateWhere = (field, dateRange) => {
   return Object.keys(range).length ? { [field]: range } : {};
 };
 
+const branchWhere = (branchFilter = {}) =>
+  branchFilter.branchId ? { branchId: branchFilter.branchId } : {};
+
+const branchIdOrNull = (branchFilter = {}) => branchFilter.branchId || null;
+
 const sumField = async (model, where, field) => {
   const result = await prisma[model].aggregate({
     where,
@@ -40,19 +45,21 @@ const sumField = async (model, where, field) => {
   return toNumber(result._sum[field]);
 };
 
-const countTickets = (businessId, dateRange, extraWhere = {}) =>
+const countTickets = (businessId, dateRange, extraWhere = {}, branchFilter = {}) =>
   prisma.repairTicket.count({
     where: {
       businessId,
+      ...branchWhere(branchFilter),
       deletedAt: null,
       ...buildDateWhere("createdAt", dateRange),
       ...extraWhere,
     },
   });
 
-const getRepairSummary = async (businessId, dateRange) => {
+const getRepairSummary = async (businessId, dateRange, branchFilter = {}) => {
   const baseWhere = {
     businessId,
+    ...branchWhere(branchFilter),
     deletedAt: null,
     ...buildDateWhere("createdAt", dateRange),
   };
@@ -115,11 +122,12 @@ const getRepairSummary = async (businessId, dateRange) => {
   };
 };
 
-const getStatusBreakdown = (businessId, dateRange) =>
+const getStatusBreakdown = (businessId, dateRange, branchFilter = {}) =>
   prisma.repairTicket.groupBy({
     by: ["status"],
     where: {
       businessId,
+      ...branchWhere(branchFilter),
       deletedAt: null,
       ...buildDateWhere("createdAt", dateRange),
     },
@@ -131,10 +139,11 @@ const getStatusBreakdown = (businessId, dateRange) =>
     },
   });
 
-const getAverageTurnaroundHours = async (businessId, dateRange) => {
+const getAverageTurnaroundHours = async (businessId, dateRange, branchFilter = {}) => {
   const rows = await prisma.repairTicket.findMany({
     where: {
       businessId,
+      ...branchWhere(branchFilter),
       deletedAt: null,
       closedAt: {
         not: null,
@@ -159,14 +168,16 @@ const getAverageTurnaroundHours = async (businessId, dateRange) => {
   return Number((totalHours / rows.length).toFixed(2));
 };
 
-const getFinancialSummary = async (businessId, dateRange) => {
+const getFinancialSummary = async (businessId, dateRange, branchFilter = {}) => {
   const invoiceWhere = {
     businessId,
+    ...branchWhere(branchFilter),
     deletedAt: null,
     ...buildDateWhere("issuedAt", dateRange),
   };
   const paymentWhere = {
     businessId,
+    ...branchWhere(branchFilter),
     deletedAt: null,
     status: "COMPLETED",
     ...buildDateWhere("collectedAt", dateRange),
@@ -225,8 +236,10 @@ const getFinancialSummary = async (businessId, dateRange) => {
   };
 };
 
-const getRevenueSeries = async (businessId, dateRange) =>
-  prisma.$queryRaw`
+const getRevenueSeries = async (businessId, dateRange, branchFilter = {}) => {
+  const branchId = branchIdOrNull(branchFilter);
+
+  return prisma.$queryRaw`
     SELECT
       date_trunc('day', collected_at) AS bucket,
       COALESCE(SUM(amount), 0)::text AS amount,
@@ -234,6 +247,7 @@ const getRevenueSeries = async (businessId, dateRange) =>
     FROM repair_payments
     WHERE business_id = ${businessId}::uuid
       AND deleted_at IS NULL
+      AND (${branchId}::uuid IS NULL OR branch_id = ${branchId}::uuid)
       AND status = 'COMPLETED'::"RepairPaymentStatus"
       AND collected_at IS NOT NULL
       AND (${dateRange.from}::timestamp IS NULL OR collected_at >= ${dateRange.from})
@@ -241,8 +255,11 @@ const getRevenueSeries = async (businessId, dateRange) =>
     GROUP BY bucket
     ORDER BY bucket ASC
   `;
+};
 
-const getProfitability = async (businessId, dateRange, limit = 20) => {
+const getProfitability = async (businessId, dateRange, limit = 20, branchFilter = {}) => {
+  const branchId = branchIdOrNull(branchFilter);
+
   const rows = await prisma.$queryRaw`
     SELECT
       rt.id AS "ticketId",
@@ -262,17 +279,23 @@ const getProfitability = async (businessId, dateRange, limit = 20) => {
     LEFT JOIN (
       SELECT repair_ticket_id, SUM(COALESCE(total_cost, 0)) AS actual_cost
       FROM repair_parts_usage
-      WHERE business_id = ${businessId}::uuid AND deleted_at IS NULL
+      WHERE business_id = ${businessId}::uuid
+        AND deleted_at IS NULL
+        AND (${branchId}::uuid IS NULL OR branch_id = ${branchId}::uuid)
       GROUP BY repair_ticket_id
     ) parts ON parts.repair_ticket_id = rt.id
     LEFT JOIN (
       SELECT repair_ticket_id, SUM(COALESCE(total_amount, 0)) AS estimated_cost
       FROM repair_estimates
-      WHERE business_id = ${businessId}::uuid AND deleted_at IS NULL AND status = 'APPROVED'::"EstimateStatus"
+      WHERE business_id = ${businessId}::uuid
+        AND deleted_at IS NULL
+        AND (${branchId}::uuid IS NULL OR branch_id = ${branchId}::uuid)
+        AND status = 'APPROVED'::"EstimateStatus"
       GROUP BY repair_ticket_id
     ) estimates ON estimates.repair_ticket_id = rt.id
     WHERE rt.business_id = ${businessId}::uuid
       AND rt.deleted_at IS NULL
+      AND (${branchId}::uuid IS NULL OR rt.branch_id = ${branchId}::uuid)
       AND (${dateRange.from}::timestamp IS NULL OR rt.created_at >= ${dateRange.from})
       AND (${dateRange.to}::timestamp IS NULL OR rt.created_at <= ${dateRange.to})
     GROUP BY rt.id, rt.ticket_number, rt.title, rt.status, parts.actual_cost, estimates.estimated_cost
@@ -322,11 +345,12 @@ const getProfitability = async (businessId, dateRange, limit = 20) => {
   };
 };
 
-const getTechnicianPerformance = async (businessId, dateRange) => {
+const getTechnicianPerformance = async (businessId, dateRange, branchFilter = {}) => {
   const rows = await prisma.repairAssignment.groupBy({
     by: ["assignedToStaffId"],
     where: {
       businessId,
+      ...branchWhere(branchFilter),
       deletedAt: null,
       ...buildDateWhere("assignedAt", dateRange),
     },
@@ -339,6 +363,7 @@ const getTechnicianPerformance = async (businessId, dateRange) => {
   const staff = await prisma.staffMember.findMany({
     where: {
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       id: {
         in: technicianIds,
       },
@@ -355,6 +380,7 @@ const getTechnicianPerformance = async (businessId, dateRange) => {
     by: ["assignedToStaffId"],
     where: {
       businessId,
+      ...branchWhere(branchFilter),
       deletedAt: null,
       status: "COMPLETED",
       ...buildDateWhere("completedAt", dateRange),
@@ -368,6 +394,7 @@ const getTechnicianPerformance = async (businessId, dateRange) => {
     by: ["previousAssignedToStaffId"],
     where: {
       businessId,
+      ...branchWhere(branchFilter),
       type: "REASSIGNED",
       previousAssignedToStaffId: {
         not: null,
@@ -398,11 +425,12 @@ const getTechnicianPerformance = async (businessId, dateRange) => {
   });
 };
 
-const getTechnicianWorkload = async (businessId) => {
+const getTechnicianWorkload = async (businessId, branchFilter = {}) => {
   const rows = await prisma.repairAssignment.groupBy({
     by: ["assignedToStaffId", "status"],
     where: {
       businessId,
+      ...branchWhere(branchFilter),
       deletedAt: null,
       completedAt: null,
       status: {
@@ -417,6 +445,7 @@ const getTechnicianWorkload = async (businessId) => {
   const staff = await prisma.staffMember.findMany({
     where: {
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       id: {
         in: [...new Set(rows.map((row) => row.assignedToStaffId))],
       },
@@ -436,12 +465,13 @@ const getTechnicianWorkload = async (businessId) => {
   }));
 };
 
-const getInventoryUsage = async (businessId, dateRange) => {
+const getInventoryUsage = async (businessId, dateRange, branchFilter = {}) => {
   const [usage, movementSummary, lowStockItems] = await prisma.$transaction([
     prisma.repairPartsUsage.groupBy({
       by: ["partSku", "partName"],
       where: {
         businessId,
+        ...branchWhere(branchFilter),
         deletedAt: null,
         ...buildDateWhere("usedAt", dateRange),
       },
@@ -460,6 +490,7 @@ const getInventoryUsage = async (businessId, dateRange) => {
       by: ["type"],
       where: {
         businessId,
+        ...branchWhere(branchFilter),
         ...buildDateWhere("createdAt", dateRange),
       },
       _count: {
@@ -472,6 +503,7 @@ const getInventoryUsage = async (businessId, dateRange) => {
     prisma.inventoryItem.findMany({
       where: {
         businessId,
+        ...branchWhere(branchFilter),
         deletedAt: null,
         isActive: true,
       },
@@ -507,8 +539,10 @@ const getInventoryUsage = async (businessId, dateRange) => {
   };
 };
 
-const getInventoryVariance = async (businessId, dateRange) =>
-  prisma.$queryRaw`
+const getInventoryVariance = async (businessId, dateRange, branchFilter = {}) => {
+  const branchId = branchIdOrNull(branchFilter);
+
+  return prisma.$queryRaw`
     SELECT
       rt.id AS "ticketId",
       rt.ticket_number AS "ticketNumber",
@@ -519,30 +553,38 @@ const getInventoryVariance = async (businessId, dateRange) =>
     LEFT JOIN (
       SELECT repair_ticket_id, SUM(COALESCE(parts_amount, 0)) AS estimated_parts_amount
       FROM repair_estimates
-      WHERE business_id = ${businessId}::uuid AND deleted_at IS NULL AND status = 'APPROVED'::"EstimateStatus"
+      WHERE business_id = ${businessId}::uuid
+        AND deleted_at IS NULL
+        AND (${branchId}::uuid IS NULL OR branch_id = ${branchId}::uuid)
+        AND status = 'APPROVED'::"EstimateStatus"
       GROUP BY repair_ticket_id
     ) est ON est.repair_ticket_id = rt.id
     LEFT JOIN (
       SELECT repair_ticket_id, SUM(COALESCE(total_cost, 0)) AS actual_parts_cost
       FROM repair_parts_usage
-      WHERE business_id = ${businessId}::uuid AND deleted_at IS NULL
+      WHERE business_id = ${businessId}::uuid
+        AND deleted_at IS NULL
+        AND (${branchId}::uuid IS NULL OR branch_id = ${branchId}::uuid)
       GROUP BY repair_ticket_id
     ) actual ON actual.repair_ticket_id = rt.id
     WHERE rt.business_id = ${businessId}::uuid
       AND rt.deleted_at IS NULL
+      AND (${branchId}::uuid IS NULL OR rt.branch_id = ${branchId}::uuid)
       AND (${dateRange.from}::timestamp IS NULL OR rt.created_at >= ${dateRange.from})
       AND (${dateRange.to}::timestamp IS NULL OR rt.created_at <= ${dateRange.to})
     ORDER BY ABS((COALESCE(est.estimated_parts_amount, 0) - COALESCE(actual.actual_parts_cost, 0))) DESC
     LIMIT 50
   `;
+};
 
-const getSlaAnalytics = async (businessId, dateRange) => {
+const getSlaAnalytics = async (businessId, dateRange, branchFilter = {}) => {
   const now = new Date();
 
   const [overdueTickets, breachedCount, avgResolutionHours] = await Promise.all([
     prisma.repairTicket.findMany({
       where: {
         businessId,
+        ...branchWhere(branchFilter),
         deletedAt: null,
         dueAt: {
           lt: now,
@@ -572,8 +614,8 @@ const getSlaAnalytics = async (businessId, dateRange) => {
       status: {
         notIn: ["DELIVERED", "CANCELLED", "CLOSED"],
       },
-    }),
-    getAverageTurnaroundHours(businessId, dateRange),
+    }, branchFilter),
+    getAverageTurnaroundHours(businessId, dateRange, branchFilter),
   ]);
 
   return {
@@ -583,10 +625,11 @@ const getSlaAnalytics = async (businessId, dateRange) => {
   };
 };
 
-const getCustomerAnalytics = async (businessId, dateRange) => {
+const getCustomerAnalytics = async (businessId, dateRange, branchFilter = {}) => {
   const rows = await prisma.customer.findMany({
     where: {
       businessId,
+      ...branchWhere(branchFilter),
       deletedAt: null,
     },
     select: {
@@ -596,6 +639,7 @@ const getCustomerAnalytics = async (businessId, dateRange) => {
       email: true,
       tickets: {
         where: {
+          ...branchWhere(branchFilter),
           deletedAt: null,
           ...buildDateWhere("createdAt", dateRange),
         },
@@ -605,6 +649,7 @@ const getCustomerAnalytics = async (businessId, dateRange) => {
       },
       invoices: {
         where: {
+          ...branchWhere(branchFilter),
           deletedAt: null,
           ...buildDateWhere("issuedAt", dateRange),
         },

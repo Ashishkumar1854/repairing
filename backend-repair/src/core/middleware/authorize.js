@@ -11,6 +11,7 @@ const authorize = (...allowedRoles) => (req, res, next) => {
   }
 
   if (!allowedRoles.includes(req.user.role)) {
+    console.warn(`[AUTH DEBUG] Authorization failed. req.user:`, req.user, `allowedRoles:`, allowedRoles);
     return next(
       new AppError("Insufficient permissions", 403, {
         code: AUTH_ERRORS.FORBIDDEN,

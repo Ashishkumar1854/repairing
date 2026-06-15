@@ -58,6 +58,7 @@ const dispatchVendorRepairSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
+    branchId: uuidSchema.optional(),
     vendorId: uuidSchema,
     externalRef: z.string().trim().max(160).optional(),
     issueDescription: z.string().trim().max(3000).optional(),
@@ -74,6 +75,7 @@ const listVendorRepairJobsSchema = z.object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(100).default(20),
     vendorId: uuidSchema.optional(),
+    branchId: uuidSchema.optional(),
     repairTicketId: uuidSchema.optional(),
     status: z.enum(Object.values(VENDOR_REPAIR_STATUSES)).optional(),
     costStatus: z.enum(Object.values(VENDOR_COST_STATUSES)).optional(),
@@ -85,6 +87,9 @@ const getVendorRepairJobSchema = z.object({
   params: z.object({
     id: uuidSchema,
   }),
+  query: z.object({
+    branchId: uuidSchema.optional(),
+  }).optional(),
 });
 
 const updateVendorRepairStatusSchema = z.object({
@@ -92,6 +97,7 @@ const updateVendorRepairStatusSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
+    branchId: uuidSchema.optional(),
     status: z.enum([
       VENDOR_REPAIR_STATUSES.IN_PROGRESS,
       VENDOR_REPAIR_STATUSES.WAITING_VENDOR_QUOTE,
@@ -110,6 +116,7 @@ const receiveVendorRepairSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
+    branchId: uuidSchema.optional(),
     nextTicketStatus: z.enum(["IN_REPAIR", "READY_FOR_DELIVERY"]).default("IN_REPAIR"),
     vendorResolution: z.string().trim().max(3000).optional(),
     currentLocation: z.string().trim().min(1).max(160).default("Reception"),
@@ -123,6 +130,7 @@ const recordVendorRepairCostSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
+    branchId: uuidSchema.optional(),
     estimatedCost: moneySchema.optional(),
     approvedCost: moneySchema.optional(),
     finalCost: moneySchema.optional(),

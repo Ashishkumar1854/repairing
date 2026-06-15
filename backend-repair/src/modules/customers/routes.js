@@ -10,12 +10,8 @@ const { searchCustomersSchema, customerTicketsSchema } = require("./validation")
 const router = express.Router();
 
 const customerReadRoles = [
-  ROLES.OWNER,
   ROLES.ADMIN,
-  ROLES.MANAGER,
   ROLES.TECHNICIAN,
-  ROLES.FRONT_DESK,
-  ROLES.ACCOUNTANT,
 ];
 
 router.use(authenticate);

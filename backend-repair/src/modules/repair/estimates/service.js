@@ -9,6 +9,7 @@ const {
 } = require("./constants");
 const { TICKET_STATUSES } = require("../constants");
 const { assertCanTransition } = require("../workflow");
+const { resolveBranchFilter } = require("../../../shared/utils/branchScope");
 
 const toCents = (value) => Math.round(Number(value || 0) * 100);
 const fromCents = (value) => (value / 100).toFixed(2);
@@ -114,7 +115,8 @@ const buildEstimateCreationTransitions = (currentStatus) => {
 };
 
 const createEstimate = async (user, ticketId, payload) => {
-  const ticket = await estimatesRepository.findTicketForEstimate(user.businessId, ticketId);
+  const branchFilter = await resolveBranchFilter(user, payload);
+  const ticket = await estimatesRepository.findTicketForEstimate(user.businessId, ticketId, branchFilter);
 
   if (!ticket) {
     throw new AppError("Repair ticket not found", 404, {
@@ -127,6 +129,7 @@ const createEstimate = async (user, ticketId, payload) => {
 
   const result = await estimatesRepository.createEstimateWithWorkflow({
     businessId: user.businessId,
+    branchFilter,
     ticketId,
     actorStaffId: user.staffId,
     estimateNumber: generateEstimateNumber(),
@@ -164,7 +167,8 @@ const createEstimate = async (user, ticketId, payload) => {
 };
 
 const getEstimate = async (user, estimateId) => {
-  const estimate = await estimatesRepository.findEstimateById(user.businessId, estimateId);
+  const branchFilter = await resolveBranchFilter(user);
+  const estimate = await estimatesRepository.findEstimateById(user.businessId, estimateId, branchFilter);
 
   if (!estimate) {
     throw new AppError("Repair estimate not found", 404, {
@@ -189,7 +193,8 @@ const assertEstimatePending = (estimate) => {
 };
 
 const approveEstimate = async (user, estimateId, payload) => {
-  const estimate = await estimatesRepository.findEstimateById(user.businessId, estimateId);
+  const branchFilter = await resolveBranchFilter(user, payload);
+  const estimate = await estimatesRepository.findEstimateById(user.businessId, estimateId, branchFilter);
 
   if (!estimate) {
     throw new AppError("Repair estimate not found", 404, {
@@ -209,6 +214,7 @@ const approveEstimate = async (user, estimateId, payload) => {
 
   const result = await estimatesRepository.approveEstimate({
     businessId: user.businessId,
+    branchFilter,
     estimateId,
     actorStaffId: user.staffId,
     previousStatus: estimate.status,
@@ -232,7 +238,8 @@ const approveEstimate = async (user, estimateId, payload) => {
 };
 
 const rejectEstimate = async (user, estimateId, payload) => {
-  const estimate = await estimatesRepository.findEstimateById(user.businessId, estimateId);
+  const branchFilter = await resolveBranchFilter(user, payload);
+  const estimate = await estimatesRepository.findEstimateById(user.businessId, estimateId, branchFilter);
 
   if (!estimate) {
     throw new AppError("Repair estimate not found", 404, {
@@ -245,6 +252,7 @@ const rejectEstimate = async (user, estimateId, payload) => {
 
   const result = await estimatesRepository.rejectEstimate({
     businessId: user.businessId,
+    branchFilter,
     estimateId,
     actorStaffId: user.staffId,
     previousStatus: estimate.status,

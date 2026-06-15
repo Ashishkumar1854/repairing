@@ -18,6 +18,7 @@ const handoverSchema = z.object({
     receiverName: z.string().trim().min(1).max(160).optional(),
     notes: z.string().trim().max(2000).optional(),
     verificationToken: z.string().trim().max(160).optional(),
+    branchId: uuidSchema.optional(),
     metadata: metadataSchema,
   }),
 });
@@ -26,6 +27,9 @@ const ticketCustodySchema = z.object({
   params: z.object({
     id: uuidSchema,
   }),
+  query: z.object({
+    branchId: uuidSchema.optional(),
+  }).optional(),
 });
 
 module.exports = {

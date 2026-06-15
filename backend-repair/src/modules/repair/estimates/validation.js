@@ -44,6 +44,7 @@ const createEstimateSchema = z.object({
     validUntil: z.coerce.date().optional(),
     notes: z.string().trim().max(4000).optional(),
     technicianNotes: z.array(technicianNoteSchema).max(20).optional(),
+    branchId: uuidSchema.optional(),
     metadata: metadataSchema,
   }),
 });
@@ -52,6 +53,9 @@ const getEstimateSchema = z.object({
   params: z.object({
     id: uuidSchema,
   }),
+  query: z.object({
+    branchId: uuidSchema.optional(),
+  }).optional(),
 });
 
 const approvalActionSchema = z.object({
@@ -60,6 +64,7 @@ const approvalActionSchema = z.object({
   }),
   body: z.object({
     notes: z.string().trim().max(2000).optional(),
+    branchId: uuidSchema.optional(),
     metadata: metadataSchema,
   }),
 });

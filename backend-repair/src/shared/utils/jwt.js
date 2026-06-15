@@ -2,9 +2,10 @@ const jwt = require("jsonwebtoken");
 
 const env = require("../../core/config/env");
 
-const buildPayload = ({ staffId, businessId, role }) => ({
+const buildPayload = ({ staffId, businessId, branchId, role }) => ({
   staffId,
   businessId,
+  branchId: branchId || null,
   role,
 });
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Select, Textarea } from "@/components/ui/Form";
@@ -12,10 +13,15 @@ import { assignmentsApi, repairApi } from "@/services/modules";
 import { unwrapArray } from "@/utils/cn";
 import { displayValue } from "@/utils/data";
 import { isActiveAssignment, isTerminalTicketStatus } from "@/utils/workflow";
+import { ticketLabel } from "@/utils/ticketLabel";
 
 export function Assignments() {
   const queryClient = useQueryClient();
-  const [selectedTicketId, setSelectedTicketId] = useState("");
+  const [searchParams] = useSearchParams();
+  const preselectedTicketId = searchParams.get("ticketId") || "";
+  const [selectedTicketId, setSelectedTicketId] = useState(preselectedTicketId);
+  const [lastAssignedTicketId, setLastAssignedTicketId] = useState("");
+  const [assignmentMode, setAssignmentMode] = useState("assign");
   const queueQuery = useQuery({ queryKey: ["assignments", "queue"], queryFn: () => assignmentsApi.queue() });
   const dashboardQuery = useQuery({ queryKey: ["assignments", "dashboard"], queryFn: () => assignmentsApi.dashboard() });
   const ticketsQuery = useQuery({ queryKey: ["repair"], queryFn: () => repairApi.list() });
@@ -54,7 +60,11 @@ export function Assignments() {
   const mutation = useNotifyMutation({
     mutationFn: ({ ticketId, payload }) => repairApi.assign(ticketId, payload),
     successMessage: "Technician assigned.",
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: async (_data, variables) => {
+      setLastAssignedTicketId(variables.ticketId);
+      setSelectedTicketId(variables.ticketId);
+      await queryClient.invalidateQueries();
+    },
   });
   const reassign = useNotifyMutation({
     mutationFn: ({ ticketId, payload }) => repairApi.reassign(ticketId, payload),
@@ -64,9 +74,14 @@ export function Assignments() {
 
   return (
     <>
-      <PageHeader title="Assignments" description="Assignments, assign technician, reassign technician, technician workload, and performance." />
+      <PageHeader title="Assignments" description="Choose a repair, assign the technician, then continue to estimate." />
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-5">
+          <Card>
+            <CardContent className="text-sm text-[var(--muted)]">
+              Select the customer repair by short ticket code and customer name. After assignment succeeds, use Go to Estimate for the next workflow step.
+            </CardContent>
+          </Card>
           <div className="grid gap-4 md:grid-cols-4">
             {Object.entries(dashboard)
               .filter(([, value]) => typeof value !== "object")
@@ -80,15 +95,16 @@ export function Assignments() {
                 </Card>
               ))}
           </div>
+          {queue.length ? (
           <Card>
-            <CardHeader><CardTitle>Technician Workload</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Active Technician Queue</CardTitle></CardHeader>
             <CardContent className="p-0">
               <Table>
-                <thead><tr><Th>Assigned Repair</Th><Th>Status</Th><Th>Priority</Th><Th>Workload</Th></tr></thead>
+                <thead><tr><Th>Repair</Th><Th>Ticket Status</Th><Th>Priority</Th><Th>Assignment</Th></tr></thead>
                 <tbody>
                   {queue.map((item, index) => (
                     <tr key={item.id || index}>
-                      <Td>{displayValue(item.ticket?.ticketNumber || item.ticketNumber, "Repair")}</Td>
+                      <Td>{item.ticket ? ticketLabel(item.ticket) : displayValue(item.ticketNumber, "Repair")}</Td>
                       <Td><StatusBadge status={item.ticket?.status || item.status || "ASSIGNED"} /></Td>
                       <Td>{displayValue(item.ticket?.priority, "NORMAL")}</Td>
                       <Td>{displayValue(item.status, "Active")}</Td>
@@ -98,11 +114,12 @@ export function Assignments() {
               </Table>
             </CardContent>
           </Card>
+          ) : null}
           <Card>
             <CardHeader><CardTitle>Assignment History</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <Select value={activeTicketId} onChange={(event) => setSelectedTicketId(event.target.value)}>
-                {tickets.map((ticket) => <option key={ticket.id} value={ticket.id}>{ticket.ticketNumber}</option>)}
+                {tickets.map((ticket) => <option key={ticket.id} value={ticket.id}>{ticketLabel(ticket)}</option>)}
               </Select>
               <Table>
                 <thead><tr><Th>Technician</Th><Th>Status</Th><Th>Assigned By</Th><Th>Assigned At</Th></tr></thead>
@@ -123,32 +140,44 @@ export function Assignments() {
         </div>
         <div className="space-y-5">
           <AssignmentForm
-            title="Assign Technician"
-            emptyMessage="No unassigned, non-terminal repair tickets are available for assignment."
-            pending={mutation.isPending}
+            mode={assignmentMode}
+            setMode={setAssignmentMode}
+            defaultTicketId={preselectedTicketId}
+            pending={assignmentMode === "assign" ? mutation.isPending : reassign.isPending}
+            assignableTickets={assignableTickets}
+            reassignableTickets={reassignableTickets}
             technicians={technicians}
-            tickets={assignableTickets}
-            onSubmit={(ticketId, payload) => mutation.mutate({ ticketId, payload })}
+            onSubmit={(ticketId, payload) => {
+              if (assignmentMode === "reassign") {
+                reassign.mutate({ ticketId, payload });
+                return;
+              }
+              mutation.mutate({ ticketId, payload });
+            }}
           />
-          <AssignmentForm
-            title="Reassign Technician"
-            emptyMessage="No active assignments are available for reassignment."
-            pending={reassign.isPending}
-            requireReason
-            technicians={technicians}
-            tickets={reassignableTickets}
-            onSubmit={(ticketId, payload) => reassign.mutate({ ticketId, payload })}
-          />
+          {lastAssignedTicketId ? (
+            <Link to={`/repair/estimates?ticketId=${lastAssignedTicketId}`}>
+              <Button className="w-full" type="button">Go to Estimate</Button>
+            </Link>
+          ) : null}
         </div>
       </div>
     </>
   );
 }
 
-function AssignmentForm({ title, tickets, technicians, pending, requireReason, emptyMessage, onSubmit }) {
+function AssignmentForm({ mode, setMode, defaultTicketId, assignableTickets, reassignableTickets, technicians, pending, onSubmit }) {
+  const isReassign = mode === "reassign";
+  const tickets = isReassign ? reassignableTickets : assignableTickets;
+  const title = isReassign ? "Reassign Technician" : "Assign Technician";
+  const emptyMessage = isReassign
+    ? "No active assignments are available for reassignment."
+    : "No unassigned, non-terminal repair tickets are available for assignment.";
+  const safeDefaultTicketId = tickets.some((ticket) => ticket.id === defaultTicketId) ? defaultTicketId : tickets[0]?.id;
+
   return (
     <Card>
-      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Technician Assignment</CardTitle></CardHeader>
       <CardContent>
         <form className="space-y-3" onSubmit={(event) => {
           event.preventDefault();
@@ -159,15 +188,19 @@ function AssignmentForm({ title, tickets, technicians, pending, requireReason, e
             notes: form.get("notes"),
           });
         }}>
-          <Select name="ticketId" disabled={!tickets.length}>
-            {tickets.map((ticket) => <option key={ticket.id} value={ticket.id}>{ticket.ticketNumber}</option>)}
+          <Select value={mode} onChange={(event) => setMode(event.target.value)}>
+            <option value="assign">Assign Technician</option>
+            <option value="reassign">Reassign Technician</option>
+          </Select>
+          <Select key={mode} name="ticketId" disabled={!tickets.length} defaultValue={safeDefaultTicketId}>
+            {tickets.map((ticket) => <option key={ticket.id} value={ticket.id}>{ticketLabel(ticket)}</option>)}
           </Select>
           {!tickets.length ? <p className="text-xs text-[var(--muted)]">{emptyMessage}</p> : null}
           <Select name="technicianId" disabled={!technicians.length}>
             {technicians.map((tech) => <option key={tech.id} value={tech.id}>{tech.name}</option>)}
           </Select>
           {!technicians.length ? <p className="text-xs text-[var(--muted)]">No technician records are available from existing assignment APIs yet.</p> : null}
-          {requireReason ? <Input name="reason" placeholder="Reassignment reason" required /> : null}
+          {isReassign ? <Input name="reason" placeholder="Reassignment reason" required /> : null}
           <Textarea name="notes" placeholder="Assignment notes" />
           <Button className="w-full" disabled={pending || !tickets.length || !technicians.length}>{title}</Button>
         </form>

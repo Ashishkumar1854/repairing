@@ -40,9 +40,49 @@ const logout = asyncHandler(async (req, res) => {
   });
 });
 
+const forgotPassword = asyncHandler(async (req, res) => {
+  const result = await authService.forgotPassword(req.validatedData.body);
+
+  return sendSuccess(res, {
+    message: "Password reset request accepted",
+    data: result,
+  });
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  const result = await authService.resetPassword(req.validatedData.body);
+
+  return sendSuccess(res, {
+    message: "Password reset successful",
+    data: result,
+  });
+});
+
+const changePassword = asyncHandler(async (req, res) => {
+  const result = await authService.changePassword(req.user, req.validatedData.body);
+
+  return sendSuccess(res, {
+    message: "Password changed successfully",
+    data: result,
+  });
+});
+
+const getBranchesByEmail = asyncHandler(async (req, res) => {
+  const result = await authService.getBranchesByEmail(req.validatedData.query.email);
+
+  return sendSuccess(res, {
+    message: "Branches retrieved successfully",
+    data: result,
+  });
+});
+
 module.exports = {
   login,
   refresh,
   me,
   logout,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+  getBranchesByEmail,
 };

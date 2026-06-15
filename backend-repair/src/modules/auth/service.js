@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+
 const AppError = require("../../shared/errors/AppError");
 const { comparePassword, hashPassword } = require("../../shared/utils/password");
 const {
@@ -11,12 +13,14 @@ const { AUTH_ERRORS } = require("./constants");
 const toAuthUser = (staff) => ({
   staffId: staff.id,
   businessId: staff.businessId,
+  branchId: staff.branchId,
   role: staff.role,
 });
 
 const toPublicStaff = (staff) => ({
   id: staff.id,
   businessId: staff.businessId,
+  branchId: staff.branchId,
   fullName: staff.fullName,
   email: staff.email,
   role: staff.role,
@@ -27,6 +31,16 @@ const toPublicStaff = (staff) => ({
         name: staff.business.name,
         slug: staff.business.slug,
         type: staff.business.type,
+        status: staff.business.status,
+      }
+    : null,
+  branch: staff.branch
+    ? {
+        id: staff.branch.id,
+        name: staff.branch.name,
+        code: staff.branch.code,
+        status: staff.branch.status,
+        metadata: staff.branch.metadata,
       }
     : null,
 });
@@ -69,9 +83,18 @@ const assertUsableStaff = (staff) => {
       code: AUTH_ERRORS.ACCOUNT_INACTIVE,
     });
   }
+
+  if (staff.role !== "SUPER_ADMIN" && staff.business?.status === "SUSPENDED") {
+    throw new AppError("Business account is suspended", 403, {
+      code: AUTH_ERRORS.BUSINESS_SUSPENDED,
+    });
+  }
 };
 
-const login = async ({ email, password }) => {
+const hashResetToken = (token) =>
+  crypto.createHash("sha256").update(token).digest("hex");
+
+const login = async ({ email, password, branchName }) => {
   const matchingStaff = await authRepository.findStaffByEmail(email);
 
   if (matchingStaff.length === 0) {
@@ -95,6 +118,19 @@ const login = async ({ email, password }) => {
     throw new AppError("Invalid credentials", 401, {
       code: AUTH_ERRORS.INVALID_CREDENTIALS,
     });
+  }
+
+  if (["ADMIN", "TECHNICIAN"].includes(staff.role)) {
+    if (!branchName) {
+      throw new AppError("Branch name is required for branch staff", 400, {
+        code: "BRANCH_NAME_REQUIRED",
+      });
+    }
+    if (!staff.branch || staff.branch.deletedAt || staff.branch.status !== "ACTIVE" || staff.branch.name.trim().toLowerCase() !== branchName.trim().toLowerCase()) {
+      throw new AppError("Invalid branch name for this staff member", 400, {
+        code: "INVALID_BRANCH",
+      });
+    }
   }
 
   const tokens = await issueTokenPair(staff);
@@ -177,9 +213,110 @@ const logout = async ({ staffId, businessId }) => {
   };
 };
 
+const forgotPassword = async ({ email }) => {
+  const matchingStaff = await authRepository.findStaffByEmail(email);
+  const staff = matchingStaff.length === 1 ? matchingStaff[0] : null;
+
+  if (!staff || !["OWNER", "SUPER_ADMIN"].includes(staff.role)) {
+    return { accepted: true };
+  }
+
+  assertUsableStaff(staff);
+
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  const resetTokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+  await authRepository.setPasswordResetToken(
+    staff.id,
+    staff.businessId,
+    hashResetToken(resetToken),
+    resetTokenExpiresAt
+  );
+
+  return {
+    accepted: true,
+    resetToken: process.env.NODE_ENV === "production" ? undefined : resetToken,
+    resetTokenExpiresAt,
+  };
+};
+
+const resetPassword = async ({ token, password }) => {
+  const staff = await authRepository.findStaffByResetTokenHash(hashResetToken(token));
+
+  if (
+    !staff ||
+    !["OWNER", "SUPER_ADMIN"].includes(staff.role) ||
+    !staff.passwordResetExpiresAt ||
+    staff.passwordResetExpiresAt.getTime() <= Date.now()
+  ) {
+    throw new AppError("Invalid or expired reset token", 400, {
+      code: "INVALID_RESET_TOKEN",
+    });
+  }
+
+  assertUsableStaff(staff);
+  await authRepository.updatePassword(staff.id, staff.businessId, await hashPassword(password));
+
+  return { reset: true };
+};
+
+const changePassword = async ({ staffId, businessId }, { currentPassword, newPassword }) => {
+  const staff = await authRepository.findStaffById(staffId);
+
+  if (!staff || staff.businessId !== businessId || !["OWNER", "SUPER_ADMIN"].includes(staff.role)) {
+    throw new AppError("Insufficient permissions", 403, {
+      code: AUTH_ERRORS.FORBIDDEN,
+    });
+  }
+
+  assertUsableStaff(staff);
+
+  const passwordMatches = await comparePassword(currentPassword, staff.passwordHash);
+  if (!passwordMatches) {
+    throw new AppError("Current password is incorrect", 400, {
+      code: "INVALID_CURRENT_PASSWORD",
+    });
+  }
+
+  await authRepository.updatePassword(staffId, businessId, await hashPassword(newPassword));
+
+  return { changed: true };
+};
+
+const getBranchesByEmail = async (email) => {
+  const matchingStaff = await authRepository.findStaffByEmail(email);
+  if (matchingStaff.length === 0) {
+    return { branches: [] };
+  }
+
+  const staff = matchingStaff[0];
+  const prisma = require("../../core/database/prisma");
+  const branches = await prisma.branch.findMany({
+    where: {
+      businessId: staff.businessId,
+      status: "ACTIVE",
+      deletedAt: null,
+    },
+    orderBy: {
+      name: "asc",
+    },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+    },
+  });
+
+  return { branches };
+};
+
 module.exports = {
   login,
   refresh,
   me,
   logout,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+  getBranchesByEmail,
 };

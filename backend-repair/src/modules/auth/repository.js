@@ -3,11 +3,14 @@ const prisma = require("../../core/database/prisma");
 const staffSelect = {
   id: true,
   businessId: true,
+  branchId: true,
   fullName: true,
   email: true,
   passwordHash: true,
   refreshTokenHash: true,
   refreshTokenExpiresAt: true,
+  passwordResetTokenHash: true,
+  passwordResetExpiresAt: true,
   role: true,
   isActive: true,
   deletedAt: true,
@@ -17,6 +20,17 @@ const staffSelect = {
       name: true,
       slug: true,
       type: true,
+      status: true,
+      deletedAt: true,
+    },
+  },
+  branch: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      status: true,
+      metadata: true,
       deletedAt: true,
     },
   },
@@ -25,6 +39,7 @@ const staffSelect = {
 const publicStaffSelect = {
   id: true,
   businessId: true,
+  branchId: true,
   fullName: true,
   email: true,
   role: true,
@@ -37,6 +52,17 @@ const publicStaffSelect = {
       name: true,
       slug: true,
       type: true,
+      status: true,
+    },
+  },
+  branch: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      status: true,
+      metadata: true,
+      deletedAt: true,
     },
   },
 };
@@ -107,10 +133,54 @@ const clearRefreshToken = (staffId, businessId) =>
     },
   });
 
+const updatePassword = (staffId, businessId, passwordHash) =>
+  prisma.staffMember.updateMany({
+    where: {
+      id: staffId,
+      businessId,
+      deletedAt: null,
+    },
+    data: {
+      passwordHash,
+      refreshTokenHash: null,
+      refreshTokenExpiresAt: null,
+      passwordResetTokenHash: null,
+      passwordResetExpiresAt: null,
+    },
+  });
+
+const setPasswordResetToken = (staffId, businessId, passwordResetTokenHash, passwordResetExpiresAt) =>
+  prisma.staffMember.updateMany({
+    where: {
+      id: staffId,
+      businessId,
+      deletedAt: null,
+    },
+    data: {
+      passwordResetTokenHash,
+      passwordResetExpiresAt,
+    },
+  });
+
+const findStaffByResetTokenHash = (passwordResetTokenHash) =>
+  prisma.staffMember.findFirst({
+    where: {
+      passwordResetTokenHash,
+      deletedAt: null,
+      business: {
+        deletedAt: null,
+      },
+    },
+    select: staffSelect,
+  });
+
 module.exports = {
   findStaffByEmail,
   findStaffById,
   findStaffByIdForBusiness,
   updateRefreshToken,
   clearRefreshToken,
+  updatePassword,
+  setPasswordResetToken,
+  findStaffByResetTokenHash,
 };

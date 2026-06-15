@@ -16,6 +16,7 @@ const {
   listTicketsSchema,
   getTicketSchema,
   updateTicketStatusSchema,
+  updateTicketExecutionSchema,
 } = require("./validation");
 const { REPAIR_PERMISSIONS } = require("./constants");
 
@@ -65,6 +66,13 @@ router.patch(
   authorize(...REPAIR_PERMISSIONS.UPDATE_STATUS),
   validate(updateTicketStatusSchema),
   repairController.updateTicketStatus
+);
+
+router.patch(
+  "/tickets/:id/execution",
+  authorize(...REPAIR_PERMISSIONS.UPDATE_EXECUTION),
+  validate(updateTicketExecutionSchema),
+  repairController.updateTicketExecution
 );
 
 module.exports = router;

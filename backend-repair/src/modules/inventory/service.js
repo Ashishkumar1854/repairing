@@ -1,4 +1,8 @@
 const AppError = require("../../shared/errors/AppError");
+const {
+  resolveBranchFilter,
+  resolveBranchIdForWrite,
+} = require("../../shared/utils/branchScope");
 const assignmentService = require("../assignments/service");
 const inventoryRepository = require("./repository");
 const { INVENTORY_ERRORS } = require("./constants");
@@ -29,8 +33,10 @@ const mapRepositoryError = (error) => {
 
 const createInventoryItem = async (user, payload) => {
   try {
+    const branchId = await resolveBranchIdForWrite(user, payload);
     const item = await inventoryRepository.createInventoryItem({
       businessId: user.businessId,
+      branchId,
       actorStaffId: user.staffId,
       data: payload,
     });
@@ -50,8 +56,10 @@ const createInventoryItem = async (user, payload) => {
 };
 
 const listInventoryItems = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
   const { items, total } = await inventoryRepository.listInventoryItems({
     businessId: user.businessId,
+    branchFilter,
     page: query.page,
     limit: query.limit,
     search: query.search,
@@ -72,7 +80,8 @@ const listInventoryItems = async (user, query) => {
 };
 
 const getInventoryItem = async (user, itemId) => {
-  const item = await inventoryRepository.findInventoryItemById(user.businessId, itemId);
+  const branchFilter = await resolveBranchFilter(user);
+  const item = await inventoryRepository.findInventoryItemById(user.businessId, itemId, branchFilter);
 
   if (!item) {
     throw new AppError("Inventory item not found", 404, {
@@ -86,8 +95,10 @@ const getInventoryItem = async (user, itemId) => {
 };
 
 const updateInventoryItem = async (user, itemId, payload) => {
+  const branchFilter = await resolveBranchFilter(user, payload);
   const item = await inventoryRepository.updateInventoryItem({
     businessId: user.businessId,
+    branchFilter,
     itemId,
     actorStaffId: user.staffId,
     data: payload,
@@ -105,7 +116,8 @@ const updateInventoryItem = async (user, itemId, payload) => {
 };
 
 const consumeParts = async (user, ticketId, payload) => {
-  const ticket = await inventoryRepository.findTicketForConsumption(user.businessId, ticketId);
+  const branchFilter = await resolveBranchFilter(user, payload);
+  const ticket = await inventoryRepository.findTicketForConsumption(user.businessId, ticketId, branchFilter);
 
   if (!ticket) {
     throw new AppError("Repair ticket not found", 404, {
@@ -121,6 +133,7 @@ const consumeParts = async (user, ticketId, payload) => {
   try {
     const result = await inventoryRepository.consumePartsForTicket({
       businessId: user.businessId,
+      branchFilter,
       ticketId,
       actorStaffId: user.staffId,
       parts: payload.parts,
@@ -151,7 +164,8 @@ const consumeParts = async (user, ticketId, payload) => {
 };
 
 const getTicketPartsUsage = async (user, ticketId) => {
-  const usage = await inventoryRepository.getTicketPartsUsage(user.businessId, ticketId);
+  const branchFilter = await resolveBranchFilter(user);
+  const usage = await inventoryRepository.getTicketPartsUsage(user.businessId, ticketId, branchFilter);
 
   return {
     usage,

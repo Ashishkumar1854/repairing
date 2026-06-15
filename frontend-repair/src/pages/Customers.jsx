@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { DataTable } from "@/components/ui/DataTable";
 import { Input } from "@/components/ui/Form";
@@ -19,17 +21,21 @@ export function Customers() {
     enabled: normalizedSearch.length > 0,
   });
   const ticketsQuery = useQuery({
-    queryKey: ["customers", "repair-ticket-customers"],
-    queryFn: () => repairApi.list({ limit: 100 }),
-    enabled: normalizedSearch.length === 0,
+    queryKey: ["customers", "repair-ticket-customers", normalizedSearch],
+    queryFn: () => repairApi.list({ limit: 100, search: normalizedSearch || undefined }),
   });
   const searchedCustomers = unwrapArray(data, ["customers"]);
-  const ticketCustomers = uniqueTicketCustomers(unwrapArray(ticketsQuery.data, ["tickets"]));
+  const repairTickets = unwrapArray(ticketsQuery.data, ["tickets"]);
+  const ticketCustomers = uniqueTicketCustomers(repairTickets);
   const customers = normalizedSearch ? searchedCustomers : ticketCustomers;
 
   return (
     <>
-      <PageHeader title="Customers" description="Customer search, repair history, invoices, payments, and ledger." />
+      <PageHeader
+        title="Customers"
+        description="Search customer profiles, view details, billing ledger, invoices, and payments."
+        actions={<Link to="/repair/new"><Button><Plus className="h-4 w-4" />Create Repair</Button></Link>}
+      />
       <Card className="mb-4">
         <CardContent>
           <Input placeholder="Search customer by phone, email, or name" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -42,6 +48,7 @@ export function Customers() {
             isLoading={normalizedSearch ? isLoading : ticketsQuery.isLoading}
             error={normalizedSearch ? error : ticketsQuery.error}
             onRetry={normalizedSearch ? refetch : ticketsQuery.refetch}
+            searchable={false}
             emptyTitle={normalizedSearch ? "No customers found" : "No customers found"}
             emptyDescription={normalizedSearch ? "No matching customers were returned by the backend." : "Customers appear here from real repair tickets. Create a repair ticket to register a customer."}
             columns={[

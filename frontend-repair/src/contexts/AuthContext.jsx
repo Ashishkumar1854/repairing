@@ -7,7 +7,6 @@ import { clearSession, getAccessToken, getStoredUser, persistSession } from "@/s
 const AuthContext = createContext(null);
 
 function normalizeRole(role) {
-  if (role === "RECEPTIONIST") return "FRONT_DESK";
   return role;
 }
 
@@ -40,7 +39,15 @@ export function AuthProvider({ children }) {
     onSuccess: (response) => {
       persistSession(response.data.user, response.data.tokens);
       setUser(response.data.user);
-      navigate("/dashboard", { replace: true });
+      const role = normalizeRole(response.data.user?.role);
+      navigate(
+        role === "SUPER_ADMIN"
+          ? "/super-admin/businesses"
+          : ["OWNER", "ADMIN"].includes(role)
+          ? "/branch/portal"
+          : "/dashboard",
+        { replace: true }
+      );
     },
   });
 

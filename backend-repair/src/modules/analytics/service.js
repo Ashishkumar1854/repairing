@@ -1,5 +1,6 @@
 const analyticsRepository = require("./repository");
 const { ANALYTICS_PERIODS } = require("./constants");
+const { resolveBranchFilter } = require("../../shared/utils/branchScope");
 
 const toNumber = (value) => Number(value || 0);
 
@@ -50,6 +51,7 @@ const withMeta = (query, data) => ({
 
 const getOwnerDashboard = async (user, query) => {
   const dateRange = resolveDateRange(query);
+  const branchFilter = await resolveBranchFilter(user, query);
   const [
     repairs,
     finance,
@@ -57,11 +59,11 @@ const getOwnerDashboard = async (user, query) => {
     technicianPerformance,
     averageRepairTurnaroundHours,
   ] = await Promise.all([
-    analyticsRepository.getRepairSummary(user.businessId, dateRange),
-    analyticsRepository.getFinancialSummary(user.businessId, dateRange),
-    analyticsRepository.getInventoryUsage(user.businessId, dateRange),
-    analyticsRepository.getTechnicianPerformance(user.businessId, dateRange),
-    analyticsRepository.getAverageTurnaroundHours(user.businessId, dateRange),
+    analyticsRepository.getRepairSummary(user.businessId, dateRange, branchFilter),
+    analyticsRepository.getFinancialSummary(user.businessId, dateRange, branchFilter),
+    analyticsRepository.getInventoryUsage(user.businessId, dateRange, branchFilter),
+    analyticsRepository.getTechnicianPerformance(user.businessId, dateRange, branchFilter),
+    analyticsRepository.getAverageTurnaroundHours(user.businessId, dateRange, branchFilter),
   ]);
 
   return {
@@ -85,10 +87,11 @@ const getOwnerDashboard = async (user, query) => {
 
 const getRepairSummary = async (user, query) => {
   const dateRange = resolveDateRange(query);
+  const branchFilter = await resolveBranchFilter(user, query);
   const [summary, averageTurnaroundHours, repairsPerTechnician] = await Promise.all([
-    analyticsRepository.getRepairSummary(user.businessId, dateRange),
-    analyticsRepository.getAverageTurnaroundHours(user.businessId, dateRange),
-    analyticsRepository.getTechnicianPerformance(user.businessId, dateRange),
+    analyticsRepository.getRepairSummary(user.businessId, dateRange, branchFilter),
+    analyticsRepository.getAverageTurnaroundHours(user.businessId, dateRange, branchFilter),
+    analyticsRepository.getTechnicianPerformance(user.businessId, dateRange, branchFilter),
   ]);
 
   return {
@@ -103,7 +106,12 @@ const getRepairSummary = async (user, query) => {
 
 const getRepairStatusBreakdown = async (user, query) => {
   const dateRange = resolveDateRange(query);
-  const breakdown = await analyticsRepository.getStatusBreakdown(user.businessId, dateRange);
+  const branchFilter = await resolveBranchFilter(user, query);
+  const breakdown = await analyticsRepository.getStatusBreakdown(
+    user.businessId,
+    dateRange,
+    branchFilter
+  );
 
   return {
     dateRange,
@@ -116,9 +124,10 @@ const getRepairStatusBreakdown = async (user, query) => {
 
 const getFinanceRevenue = async (user, query) => {
   const dateRange = resolveDateRange(query);
+  const branchFilter = await resolveBranchFilter(user, query);
   const [summary, series] = await Promise.all([
-    analyticsRepository.getFinancialSummary(user.businessId, dateRange),
-    analyticsRepository.getRevenueSeries(user.businessId, dateRange),
+    analyticsRepository.getFinancialSummary(user.businessId, dateRange, branchFilter),
+    analyticsRepository.getRevenueSeries(user.businessId, dateRange, branchFilter),
   ]);
 
   return {
@@ -132,19 +141,37 @@ const getFinanceRevenue = async (user, query) => {
   };
 };
 
-const getFinanceDues = async (user, query) =>
-  withMeta(query, {
-    dues: await analyticsRepository.getFinancialSummary(user.businessId, resolveDateRange(query)),
+const getFinanceDues = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
+  return withMeta(query, {
+    dues: await analyticsRepository.getFinancialSummary(
+      user.businessId,
+      resolveDateRange(query),
+      branchFilter
+    ),
   });
+};
 
-const getFinancePayments = async (user, query) =>
-  withMeta(query, {
-    payments: await analyticsRepository.getFinancialSummary(user.businessId, resolveDateRange(query)),
+const getFinancePayments = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
+  return withMeta(query, {
+    payments: await analyticsRepository.getFinancialSummary(
+      user.businessId,
+      resolveDateRange(query),
+      branchFilter
+    ),
   });
+};
 
 const getProfitability = async (user, query) => {
   const dateRange = resolveDateRange(query);
-  const profitability = await analyticsRepository.getProfitability(user.businessId, dateRange);
+  const branchFilter = await resolveBranchFilter(user, query);
+  const profitability = await analyticsRepository.getProfitability(
+    user.businessId,
+    dateRange,
+    20,
+    branchFilter
+  );
 
   return {
     dateRange,
@@ -152,27 +179,43 @@ const getProfitability = async (user, query) => {
   };
 };
 
-const getTechnicianPerformance = async (user, query) =>
-  withMeta(query, {
+const getTechnicianPerformance = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
+  return withMeta(query, {
     technicians: await analyticsRepository.getTechnicianPerformance(
       user.businessId,
-      resolveDateRange(query)
+      resolveDateRange(query),
+      branchFilter
     ),
   });
+};
 
-const getTechnicianWorkload = async (user, query) =>
-  withMeta(query, {
-    workload: await analyticsRepository.getTechnicianWorkload(user.businessId),
+const getTechnicianWorkload = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
+  return withMeta(query, {
+    workload: await analyticsRepository.getTechnicianWorkload(user.businessId, branchFilter),
   });
+};
 
-const getInventoryUsage = async (user, query) =>
-  withMeta(query, {
-    inventory: await analyticsRepository.getInventoryUsage(user.businessId, resolveDateRange(query)),
+const getInventoryUsage = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
+  return withMeta(query, {
+    inventory: await analyticsRepository.getInventoryUsage(
+      user.businessId,
+      resolveDateRange(query),
+      branchFilter
+    ),
   });
+};
 
 const getInventoryVariance = async (user, query) => {
   const dateRange = resolveDateRange(query);
-  const variance = await analyticsRepository.getInventoryVariance(user.businessId, dateRange);
+  const branchFilter = await resolveBranchFilter(user, query);
+  const variance = await analyticsRepository.getInventoryVariance(
+    user.businessId,
+    dateRange,
+    branchFilter
+  );
 
   return {
     dateRange,
@@ -185,18 +228,27 @@ const getInventoryVariance = async (user, query) => {
   };
 };
 
-const getSlaAnalytics = async (user, query) =>
-  withMeta(query, {
-    sla: await analyticsRepository.getSlaAnalytics(user.businessId, resolveDateRange(query)),
-  });
-
-const getCustomerAnalytics = async (user, query) =>
-  withMeta(query, {
-    customers: await analyticsRepository.getCustomerAnalytics(
+const getSlaAnalytics = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
+  return withMeta(query, {
+    sla: await analyticsRepository.getSlaAnalytics(
       user.businessId,
-      resolveDateRange(query)
+      resolveDateRange(query),
+      branchFilter
     ),
   });
+};
+
+const getCustomerAnalytics = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
+  return withMeta(query, {
+    customers: await analyticsRepository.getCustomerAnalytics(
+      user.businessId,
+      resolveDateRange(query),
+      branchFilter
+    ),
+  });
+};
 
 module.exports = {
   getOwnerDashboard,

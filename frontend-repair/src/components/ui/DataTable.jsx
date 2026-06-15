@@ -12,6 +12,7 @@ export function DataTable({
   error,
   onRetry,
   searchPlaceholder = "Search table...",
+  searchable = true,
   emptyTitle,
   emptyDescription,
   pageSize = 10,
@@ -29,16 +30,18 @@ export function DataTable({
 
   return (
     <div className="min-w-0">
-      <div className="border-b border-[var(--border)] p-4">
-        <Input
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setPage(1);
-          }}
-          placeholder={searchPlaceholder}
-        />
-      </div>
+      {searchable ? (
+        <div className="border-b border-[var(--border)] p-4">
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+            placeholder={searchPlaceholder}
+          />
+        </div>
+      ) : null}
       <QueryState
         isLoading={isLoading}
         error={error}

@@ -945,6 +945,48 @@ The newest custody event is consistently shown first and used for the latest tra
 
 ### Issue
 
+The shop workflow screens were too technical for day-to-day staff use. Ticket numbers appeared as long identifiers, Customers and Repair screens showed duplicate search boxes, and users had to manually know the next page after creating a repair or assigning a technician.
+
+### Root Cause
+
+The frontend mirrored backend module boundaries closely, but did not provide enough guided navigation between operational steps. Data tables also included their own local search even when the screen already had a backend/API search.
+
+### Before
+
+After creating a repair, staff had no direct next-step button. Assignment and estimate dropdowns displayed long ticket numbers without customer context. Estimate creation used separate diagnosis, repair note, and notes fields, which made a simple shop estimate feel heavy.
+
+### Fix Applied
+
+Added readable ticket labels using the last four ticket characters plus customer name, hid duplicate table search on Customers and Repair, added a repair-ticket section inside Customers, added Go to Assignment after repair creation, added Go to Estimate after assignment success, and simplified estimate creation to one combined diagnosis/estimate/customer note field while preserving the backend payload contract.
+
+### After
+
+Staff can move through Create Repair -> Assignment -> Estimate with clear buttons and readable repair labels, and Customers/Repair no longer show duplicate search inputs.
+
+### Files Modified
+
+- `frontend-repair/src/components/ui/DataTable.jsx`
+- `frontend-repair/src/pages/Customers.jsx`
+- `frontend-repair/src/pages/Repair.jsx`
+- `frontend-repair/src/pages/Assignments.jsx`
+- `frontend-repair/src/pages/Estimates.jsx`
+- `frontend-repair/src/utils/ticketLabel.js`
+- `backend-repair/design.md`
+
+### Backend Contract Reference
+
+Existing mounted APIs only: `GET /api/v1/repair/tickets`, `POST /api/v1/repair/tickets`, `POST /api/v1/repair/tickets/:id/assign`, `GET /api/v1/repair/tickets/:id/assignments`, and `POST /api/v1/repair/tickets/:id/estimate`.
+
+### Verification
+
+`npm run build` completed successfully. Local Vite route smoke checks returned HTTP 200 for `/customers`, `/repair`, `/assignments?ticketId=test`, and `/repair/estimates?ticketId=test`.
+
+---
+
+## Frontend Fix Log
+
+### Issue
+
 Parts Usage had a real route and backend-backed API calls but was not discoverable from ERP navigation.
 
 ### Root Cause
@@ -1340,3 +1382,727 @@ Existing mounted ERP workflow APIs: repair ticket routes, assignment routes, est
 ### Verification
 
 `npm run build` completed successfully.
+
+## Frontend Fix Log
+
+### Issue
+
+The repair intake form was too detailed for shop counter usage and exposed separate technical fields such as email, repair title, device condition, issue title, ticket description, serial number, and IMEI.
+
+### Root Cause
+
+The frontend mirrored the backend repair ticket payload too directly instead of presenting a simple intake workflow for staff.
+
+### Before
+
+Staff had to fill many separate fields before creating a repair, including duplicate issue/title/description style inputs and separate serial/IMEI fields.
+
+### Fix Applied
+
+Simplified the Create Repair form to customer name, phone, item name, priority, one optional `IMEI / Serial Number` field, and one required `Issue Description` field. The frontend maps these simple fields into the existing backend contract without changing APIs.
+
+### After
+
+Staff can create a repair ticket with the minimum practical intake details, while the backend still receives valid `customer`, `title`, `description`, `items`, and `issues` payload data.
+
+### Files Modified
+
+- `frontend-repair/src/pages/Repair.jsx`
+- `backend-repair/design.md`
+
+### Backend Contract Reference
+
+`POST /api/v1/repair/tickets` requires customer name/phone or customer id, ticket title, at least one item, and at least one issue. The simplified form maps `Item Name` to the ticket item and maps `Issue Description` to the ticket and issue description fields.
+
+### Verification
+
+`npm run build` is run after this change to confirm the frontend compiles successfully.
+
+## SaaS Phase 3 — Multi Branch Architecture
+
+### Why Branch Isolation Was Added
+
+Phase 2 made the ERP SaaS-ready at the business level by using `business_id` as the tenant boundary. Phase 3 adds `branch_id` so a single repair business can run multiple shops, counters, or service centers while keeping each branch's operational data isolated.
+
+### Previous Architecture
+
+The platform previously isolated data by business only. Owners, admins, technicians, repairs, customers, stock, invoices, handovers, and vendor jobs were all scoped to a business, but there was no operational boundary inside that business.
+
+### New Architecture
+
+The ERP now uses `business_id + branch_id` for operational data. `business_id` remains the SaaS tenant boundary, while `branch_id` scopes day-to-day ERP records such as customers, repair tickets, assignments, inventory, invoices, payments, handovers, and vendor repair jobs.
+
+### Role Hierarchy
+
+`SUPER_ADMIN` can inspect the platform across businesses and branches. `OWNER` controls the full business and can view or manage every branch. `ADMIN` belongs to one branch and is restricted to that branch's ERP data. `TECHNICIAN` belongs to one branch and is restricted to assigned work inside that branch.
+
+### Branch Security Model
+
+Owners may create, edit, activate, deactivate, and view branches within their business. Admins and technicians receive a `branchId` in their authenticated user context. Backend services resolve the allowed branch scope from the authenticated role, not from frontend trust alone.
+
+### Query Isolation Strategy
+
+ERP services call the branch scope utility before repository access. Owners can request a specific branch or all branches in their business. Admins and technicians are forced to their assigned branch, and cross-branch requests are rejected. Super admins can access platform-level branch data where supported.
+
+### Database Changes
+
+A `branches` table was added with business relation, branch code, contact data, main-branch marker, status, and timestamps. Operational records received `branch_id` where branch-level isolation is required. SaaS-level records such as businesses and subscriptions remain business-level only.
+
+### Migration Strategy
+
+The migration creates a default `MAIN` branch for each existing business, backfills existing operational records to that branch, and then enforces branch foreign keys and branch-aware uniqueness such as customer phone and inventory SKU per branch.
+
+### Before
+
+An admin or technician could be business-scoped without a branch assignment, which made multi-location deployments unsafe because branch data could be mixed inside the same business.
+
+### After
+
+Owners can operate across branches, while admins and technicians are branch-scoped. Repair, customer, inventory, billing, vendor, handover, assignment, and analytics access is filtered by backend branch rules.
+
+### Verification
+
+`npm run db:validate`, `npm run prisma:generate`, and frontend `npm run build` pass. Database-backed migration/test execution requires the local PostgreSQL service configured in `.env` to be running.
+
+## SaaS Phase 2 Credential And Role Alignment
+
+### Issue
+
+The SaaS role model needed to expose `SUPER_ADMIN`, `OWNER`, `ADMIN`, and `TECHNICIAN`, while keeping the mandatory platform owner and super-admin credentials outside application code.
+
+### Root Cause
+
+Earlier seed and configuration paths still mixed demo credentials with role setup. This made it too easy for seeded owner/admin credentials to drift from `.env` and made `ADMIN` less explicit in the SaaS UI.
+
+### Before
+
+Owner credentials were seeded from hardcoded/default values, demo admin setup reused old seed password behavior, and Staff Management was technician-focused. Frontend navigation did not clearly treat `ADMIN` as an ERP operator role.
+
+### Fix Applied
+
+Configuration now requires `SUPER_ADMIN_EMAILS`, `SUPER_ADMIN_PASSWORD`, `OWNER_EMAIL`, and `OWNER_PASSWORD` from environment variables. Optional demo admin seeding uses `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD`. Staff Management now lets an Owner create either `ADMIN` or `TECHNICIAN`, while `ADMIN` gets ERP operator navigation and remains excluded from owner-only SaaS settings.
+
+### After
+
+Super-admin and owner credentials are env-driven and mandatory. Owner is the only role that manages Staff. Owner-created Admin users can operate ERP workflow screens without getting Business Profile, Staff, Subscription, or Super Admin access.
+
+### Files Modified
+
+- `backend-repair/.env.example`
+- `backend-repair/.env`
+- `backend-repair/src/core/config/env.js`
+- `backend-repair/prisma/seed.js`
+- `backend-repair/src/modules/staff/controller.js`
+- `backend-repair/src/modules/staff/repository.js`
+- `backend-repair/src/modules/staff/routes.js`
+- `backend-repair/src/modules/staff/service.js`
+- `backend-repair/src/modules/staff/validation.js`
+- `frontend-repair/src/services/modules.js`
+- `frontend-repair/src/layouts/navigation.js`
+- `frontend-repair/src/routes/AppRoutes.jsx`
+- `frontend-repair/src/pages/StaffManagement.jsx`
+- `backend-repair/design.md`
+
+### Backend Contract Reference
+
+Uses existing auth and staff-management contracts plus the SaaS staff routes: `GET /api/v1/staff`, `POST /api/v1/staff`, `POST /api/v1/staff/admins`, `POST /api/v1/staff/technicians`, `POST /api/v1/staff/:id/disable`, `POST /api/v1/staff/:id/enable`, and `POST /api/v1/staff/:id/reset-password`.
+
+### Verification
+
+`node -c prisma/seed.js`, `npm run db:validate`, and environment config loading were verified. Backend Jest commands were attempted, but the local PostgreSQL server at `localhost:5433` was not reachable. Frontend production build is run after this change.
+
+### Migration Notes
+
+Branch-level tenant operations are intentionally not partially implemented in this pass. The current tenant boundary remains shared database, shared schema, and `business_id` isolation. Full branch architecture needs its own migration and query-isolation pass before it is safe to expose in production.
+
+## SaaS Phase 2
+
+### Why This Layer Was Added
+
+The repair ERP workflow is now stable for a single shop. SaaS Phase 2 adds the management layer needed to run the same ERP for multiple repair businesses without changing the operational repair lifecycle.
+
+The existing workflow remains unchanged:
+
+Customer -> Repair Ticket -> Assignment -> Estimate -> Approval -> Parts Usage -> Invoice -> Payment -> Handover -> Delivered -> Closed.
+
+### Tenant Boundary
+
+The platform continues to use a shared database and shared schema. `business_id` remains the tenant boundary for operational data, staff records, inventory, invoices, vendors, handovers, and analytics.
+
+This keeps deployment simple and avoids separate databases, separate schemas, or separate deployments per shop. Backend authorization and repository filters must continue to enforce `business_id` isolation for tenant-scoped APIs.
+
+### SaaS Roles
+
+The SaaS UI now exposes only:
+
+- `SUPER_ADMIN`: platform operator role for tenant administration.
+- `OWNER`: shop owner role for business profile, staff, subscription visibility, and full ERP operations.
+- `TECHNICIAN`: shop technician role for assigned repairs, estimates, parts usage, and handover tasks.
+
+Legacy roles remain in code and data for future compatibility, but they are not exposed in the SaaS navigation.
+
+### Business Profile
+
+Business Profile stores the shop source-of-truth details:
+
+- Business name, slug, description.
+- Logo and banner URLs.
+- Phone, email, website.
+- Country, state, city, address.
+- GST number.
+
+Owner users can read and update their own business profile through `GET /api/v1/business/profile` and `PATCH /api/v1/business/profile`.
+
+### Staff Management
+
+Staff Management lets an owner manage technicians only. Owners can create technician accounts, disable or enable them, and reset technician passwords. Technician-created password recovery is intentionally not exposed.
+
+Backend routes added:
+
+- `GET /api/v1/staff`
+- `POST /api/v1/staff/technicians`
+- `POST /api/v1/staff/:id/disable`
+- `POST /api/v1/staff/:id/enable`
+- `POST /api/v1/staff/:id/reset-password`
+
+### Password Policy
+
+Owners can use forgot password, reset password, and authenticated password change. Technicians do not receive a forgot-password workflow; owner reset is the supported technician recovery path.
+
+Backend auth routes added:
+
+- `POST /api/v1/auth/forgot-password`
+- `POST /api/v1/auth/reset-password`
+- `POST /api/v1/auth/change-password`
+
+### Subscription System
+
+Subscription support is management-only in this phase. It records the current plan, status, start date, and expiry date for a business. No payment gateway or automated billing is included.
+
+Owner users can view their current subscription through `GET /api/v1/subscription/current`.
+
+### Super Admin Foundation
+
+`SUPER_ADMIN` can list businesses, view a business snapshot, suspend a tenant, and activate a tenant. Delete, payment management, and advanced SaaS analytics are intentionally excluded from Phase 2.
+
+Backend routes added:
+
+- `GET /api/v1/super-admin/businesses`
+- `GET /api/v1/super-admin/businesses/:id`
+- `PATCH /api/v1/super-admin/businesses/:id/suspend`
+- `PATCH /api/v1/super-admin/businesses/:id/activate`
+
+### Frontend Screens
+
+Frontend screens added:
+
+- Business Profile at `/business`.
+- Staff Management at `/staff`.
+- Subscription at `/subscription`.
+- Super Admin Businesses at `/super-admin/businesses`.
+- Technician Assigned Repairs at `/technician/repairs`.
+
+Navigation is role-aware:
+
+- Owner: ERP modules plus Business Profile, Staff, Subscription.
+- Technician: Dashboard, Assigned Repairs, Estimates, Parts Usage, Handover.
+- Super Admin: Businesses.
+
+### Migration Notes
+
+The SaaS migration adds business profile columns, business status, subscription enums, password reset token fields, and subscriptions.
+
+Seed data now creates:
+
+- Demo Repair as an active business.
+- An `OWNER` login for Demo Repair.
+- Demo technicians using `TECHNICIAN`.
+- A platform business for super admin users.
+- Super admin accounts from `SUPER_ADMIN_EMAILS` in environment configuration.
+
+Default super admin emails are documented in `.env.example` as:
+
+- `super_admin1@repair-erp.local`
+- `super_admin2@repair-erp.local`
+
+The default super admin password comes from `SUPER_ADMIN_PASSWORD`, falling back to the seed admin password for local development.
+
+## Frontend Fix Log
+
+### Issue
+
+After invoice generation, staff only saw a success toast and could not easily understand where the newly generated invoice went.
+
+### Root Cause
+
+The Billing page invalidated invoice queries after creation but did not render the mutation response or provide a direct next action from the generated invoice.
+
+### Before
+
+Staff generated an invoice, saw a popup, and then had to manually find the new invoice in the list or payment form.
+
+### Fix Applied
+
+Updated Billing to show a generated invoice summary below the invoice form with invoice number, total, due amount, status, and direct Open Invoice / Collect Payment actions. Billing also refreshes both invoice and repair queries after invoice creation.
+
+### After
+
+After creating an invoice, the result remains visible on the Billing page and staff can immediately open the invoice or collect payment.
+
+### Files Modified
+
+- `frontend-repair/src/pages/Billing.jsx`
+- `backend-repair/design.md`
+
+### Backend Contract Reference
+
+`POST /api/v1/repair/tickets/:id/invoice` returns the generated invoice object used by the frontend summary.
+
+### Verification
+
+`npm run build` is run after this change to confirm the frontend compiles successfully.
+
+## Frontend Fix Log
+
+### Issue
+
+Older tickets in `WAITING_APPROVAL` could not be approved from the frontend after a page reload.
+
+### Root Cause
+
+The repair ticket list and detail responses did not expose the latest estimate id. The frontend can approve a newly created estimate while the create response is still in memory, but after reload it only had the ticket status and no mounted API to list estimates by ticket.
+
+### Before
+
+Staff could see that a repair was waiting for estimate approval, but the UI could not reliably call `POST /api/v1/repair/estimates/:id/approve` because it did not know the estimate id.
+
+### Fix Applied
+
+Added latest estimate summary data to repair ticket list/detail repository responses as `latestEstimate`, keeping the latest estimate in the `estimates` array for existing frontend compatibility. Updated the Estimates page to use `latestEstimate.id` and show an `Approve Estimate` action for existing `WAITING_APPROVAL` tickets.
+
+### After
+
+Reloaded waiting-approval tickets can now expose a real approve action when the backend returns the latest estimate summary. After approval, the repair queries are invalidated so Billing can pick up the approved/billable ticket.
+
+### Files Modified
+
+- `backend-repair/src/modules/repair/repository.js`
+- `frontend-repair/src/pages/Estimates.jsx`
+- `backend-repair/design.md`
+
+### Backend Contract Reference
+
+Existing workflow API: `POST /api/v1/repair/estimates/:id/approve`. The response addition supports that existing route by exposing the latest estimate id on `GET /api/v1/repair/tickets` and `GET /api/v1/repair/tickets/:id`.
+
+### Verification
+
+`node --check backend-repair/src/modules/repair/repository.js` completed successfully. `npm run build` completed successfully for `frontend-repair`. Backend integration tests could not run locally because the Postgres test database at `localhost:5433` was not reachable and Docker daemon was not running.
+
+## Frontend Fix Log
+
+### Issue
+
+Assignments showed a separate `Technician Workload` block and separate assign/reassign cards, while Billing did not provide a direct row action for invoices with pending dues.
+
+### Root Cause
+
+The UI exposed backend modules independently instead of grouping related staff actions around the immediate workflow decision.
+
+### Before
+
+Staff saw assign and reassign as separate panels, the workload heading was confusing when the goal was simply to assign a repair, and pending invoices required users to discover the payment form separately.
+
+### Fix Applied
+
+Renamed the workload table to `Active Technician Queue`, hid it when empty, merged assign and reassign into one `Technician Assignment` panel with an action dropdown, and added a `Pay` button beside invoices with a due amount.
+
+### After
+
+Staff can choose `Assign Technician` or `Reassign Technician` from one action panel, and Billing rows with pending/partial dues have a clear payment path.
+
+### Files Modified
+
+- `frontend-repair/src/pages/Assignments.jsx`
+- `frontend-repair/src/pages/Billing.jsx`
+- `backend-repair/design.md`
+
+### Backend Contract Reference
+
+Assignment uses existing `POST /api/v1/repair/tickets/:id/assign` and `POST /api/v1/repair/tickets/:id/reassign`. Billing payment uses existing invoice detail and payment collection routes.
+
+### Verification
+
+`npm run build` is run after this change to confirm the frontend compiles successfully.
+
+## Frontend Fix Log
+
+### Issue
+
+After estimate creation, staff could see `WAITING_APPROVAL` but the next step was unclear, and Billing hid invoice candidates because repair list responses do not include estimate detail records.
+
+### Root Cause
+
+The frontend required local `ticket.estimates[].status === APPROVED` before showing invoice candidates, but the mounted repair ticket list API only returns ticket summary fields. The estimate approval step also required staff to discover estimate details manually.
+
+### Before
+
+A newly estimated repair could remain in `WAITING_APPROVAL`, would not appear in Billing, and the Billing form showed a generic no-eligible-ticket message.
+
+### Fix Applied
+
+Added immediate `Approve Estimate` and `Go to Billing` actions after estimate creation, relaxed Billing candidate filtering for backend-billable statuses when estimate detail data is absent, made invoice candidate labels readable, simplified invoice table columns, and added a Billing hint for tickets still waiting for approval.
+
+### After
+
+Staff can create an estimate, approve it immediately, continue to Billing, and generate an invoice from approved/billable repairs. Billing now explains why waiting-approval repairs are not ready for invoice.
+
+### Files Modified
+
+- `frontend-repair/src/pages/Estimates.jsx`
+- `frontend-repair/src/pages/Billing.jsx`
+- `frontend-repair/src/utils/workflow.js`
+- `backend-repair/design.md`
+
+### Backend Contract Reference
+
+`POST /api/v1/repair/tickets/:id/estimate`, `POST /api/v1/repair/estimates/:id/approve`, and `POST /api/v1/repair/tickets/:id/invoice`.
+
+### Verification
+
+`npm run build` is run after this change to confirm the frontend compiles successfully.
+
+## Frontend Fix Log
+
+### Issue
+
+The browser workflow could approve an estimate and send staff to Parts Usage, but an approved ticket still needed to enter the repair state before operational parts consumption.
+
+### Root Cause
+
+The backend workflow separates estimate approval from repair execution. The frontend showed approved tickets on Parts Usage, but did not explicitly perform the `APPROVED` to `IN_REPAIR` transition before consuming stock.
+
+### Before
+
+Staff could select an approved repair on Parts Usage and attempt to consume inventory without a clear repair-start step.
+
+### Fix Applied
+
+Updated Parts Usage so an `APPROVED` repair is moved to `IN_REPAIR` through the existing ticket status API before calling the parts consumption API.
+
+### After
+
+The frontend flow now moves from Estimate Approval to Parts Usage cleanly: approved tickets are started as in-repair automatically when parts are consumed, then staff can continue to Billing.
+
+### Files Modified
+
+- `frontend-repair/src/pages/PartsUsage.jsx`
+- `backend-repair/design.md`
+
+### Backend Contract Reference
+
+Uses existing `PATCH /api/v1/repair/tickets/:id/status` with `status: "IN_REPAIR"` followed by existing `POST /api/v1/repair/tickets/:id/consume-parts`.
+
+### Verification
+
+`npm run build` is run after this change. A live API workflow check is run with the same transition order used by the frontend.
+
+## Frontend Fix Log
+
+### Issue
+
+The dashboard workflow note still read like a module summary, and Logout was placed in the top header instead of the sidebar where staff expects persistent account actions.
+
+### Root Cause
+
+The layout kept account controls in the header while the dashboard note described all modules with similar weight, making the main repair path less obvious.
+
+### Before
+
+Staff saw Logout in the top-right header. The dashboard workflow mixed the normal repair lifecycle with optional vendor and analytics tasks without clearly showing the day-to-day order.
+
+### Fix Applied
+
+Moved Logout to the bottom of the sidebar and rewrote the dashboard workflow as the final shop operating sequence: Repairs, Assignments, Estimates, Parts Usage, Billing, Handover, optional Vendors, and Analytics review.
+
+### After
+
+The first dashboard card now explains the full shop workflow in order, and Logout stays available at the bottom of the sidebar.
+
+### Files Modified
+
+- `frontend-repair/src/layouts/AppLayout.jsx`
+- `frontend-repair/src/pages/Dashboard.jsx`
+- `backend-repair/design.md`
+
+### Backend Contract Reference
+
+No API contract changed. This is a frontend layout and onboarding-copy alignment using the existing ERP workflow screens.
+
+### Verification
+
+`npm run build` is run after this change to confirm the frontend compiles successfully.
+
+---
+
+## SaaS Phase 3 – Multi-Branch Data Isolation & Validation Schemas
+
+### Problem
+
+Owner users were unable to query data scoped to a specific branch, and write actions (such as ticket creation) performed by owners defaulted to the `MAIN` branch, rendering branch isolation ineffective at the owner level. 
+
+Additionally, the Staff module list endpoint allowed owners to retrieve staff across the entire business but did not support filtering by branch.
+
+### Root Cause
+
+The frontend Axios request interceptor correctly appends the active `branchId` to query params (for GET) or request bodies (for POST/PATCH/PUT). However:
+1. Zod validation schemas across key tenant-scoped modules (`repair`, `estimates`, `handover`, `billing`, `inventory`, `assignments`, and `vendors`) did not specify `branchId` in their shape. Consequently, Zod's `parse` method silently stripped `branchId` from validated data before reaching the controllers and service layer.
+2. The Staff module list endpoint in `staffService.list` performed a hardcoded check restricting branch querying to `ADMIN` roles and lacked integration with the standard `resolveBranchFilter` utility.
+
+### Before
+
+- Zod schemas stripped `branchId` for tickets, estimates, billing, inventory, assignments, and handovers. Owner users selecting a branch on the frontend would see all records in list views, and created tickets were backfilled to the `MAIN` branch.
+- The Staff list request (`GET /api/v1/staff`) for owners always returned all staff members of the business without branch isolation or branch-scoped filtering.
+
+### After
+
+- `branchId` validation has been added to all Zod schemas that receive inputs scoped by branch:
+  - `createTicketSchema`, `listTicketsSchema`, `getTicketSchema`, `updateTicketStatusSchema`
+  - `createEstimateSchema`, `getEstimateSchema`, `approvalActionSchema`
+  - `handoverSchema`, `ticketCustodySchema`
+  - `generateInvoiceSchema`, `listInvoicesSchema`, `getInvoiceSchema`, `collectPaymentSchema`, `customerLedgerSchema`
+  - `consumePartsSchema`, `partsUsageHistorySchema`
+  - `assignTechnicianSchema`, `reassignTechnicianSchema`, `getAssignmentHistorySchema`
+  - `getVendorRepairJobSchema`
+- Staff listing is validated via a new `listStaffSchema` query validator, and the controller passes query filters to `staffService.list`.
+- `staffService.list` resolved the branch filter dynamically using the `resolveBranchFilter` utility, restricting admins to their branch and allowing owners to filter staff by `branchId`.
+
+### Files Modified
+
+- `backend-repair/src/modules/repair/validation.js`
+- `backend-repair/src/modules/repair/estimates/validation.js`
+- `backend-repair/src/modules/handover/validation.js`
+- `backend-repair/src/modules/billing/validation.js`
+- `backend-repair/src/modules/inventory/validation.js`
+- `backend-repair/src/modules/assignments/validation.js`
+- `backend-repair/src/modules/vendors/validation.js`
+- `backend-repair/src/modules/staff/validation.js`
+- `backend-repair/src/modules/staff/routes.js`
+- `backend-repair/src/modules/staff/controller.js`
+- `backend-repair/src/modules/staff/service.js`
+
+### Verification
+
+All modified files compile successfully. Syntax checks were verified with `node --check` across the entire codebase.
+
+---
+
+## SaaS Phase 3 – Admin Dashboard Simplification & Staff Management Scoping
+
+### Problem
+
+The `ADMIN` dashboard was previously identical to the `OWNER` dashboard, presenting high-level business analytics, utilization graphs, and KPI metrics that were irrelevant to branch-scoped administrators. In addition, the branch `ADMIN` had no direct way on their dashboard to add, disable, or reset passwords for technicians, and the standalone `Analytics` navigation was unnecessarily exposed to them.
+
+### Root Cause
+
+Admin users shared the generic dashboard template and routing configs with Owners under the broad `operator` role umbrella. The backend staff routes and service assertions also lacked checks allowing `ADMIN` users to perform activation adjustments or reset technician passwords within their assigned branch.
+
+### Before
+
+- Admins saw the analytics-heavy Owner dashboard including utilization graphs and financial KPI metrics.
+- Admins could see the `Analytics` navigation link in the sidebar.
+- Admins were blocked on the backend when attempting to disable, enable, or reset passwords of technician staff members.
+
+### After
+
+- A streamlined `AdminDashboard` was introduced for the `ADMIN` role. Heavy charts, KPIs, and graphs are replaced by a branch welcome section, quick action cards (Intake, Customers, Estimates, Billing), and a **Branch Staff Management** console.
+- The dashboard-level staff console allows branch Admins to list, add, disable/enable, and reset passwords for branch technicians directly on the dashboard.
+- The backend staff endpoints (`disable`, `enable`, `reset-password`) are updated to authorize `ADMIN` users.
+- The `assertManagedStaff` helper enforces strict branch isolation: `ADMIN` users can only adjust active flags or reset passwords for technicians belonging to their own branch.
+- The `Analytics` sidebar navigation link is restricted to the `OWNER` role, while the `Staff` link is exposed to both `OWNER` and `ADMIN` roles.
+
+### Files Modified
+
+- [routes.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/staff/routes.js)
+- [service.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/staff/service.js)
+- [navigation.js](file:///Users/company%20Project/Reparing/frontend-repair/src/layouts/navigation.js)
+- [Dashboard.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Dashboard.jsx)
+
+### Verification
+
+All modified backend files pass integration test suites via `npm run test:integration` including auth and RBAC boundaries. The frontend compiles successfully via `npm run build`.
+
+---
+
+## Phase 4: Admin ↔ Technician Operational Workflow
+
+### Problem
+
+The operational lifecycle between branch `ADMIN` and `TECHNICIAN` was incomplete. Technicians did not have a status group to submit finished work for quality review before delivery, and the database lacked separate fields to track repair costs (labor, parts, vendor) and estimate profit margin. The Technician Repairs page was basic and lacked diagnostic entry inputs, actual parts consumption, and a unified execution panel.
+
+### Root Cause
+
+The initial design lacked the intermediate state `READY_FOR_REVIEW` and the corresponding roles boundaries where technicians request review and admin reviews/approves it. The financial costs were not automatically aggregated on the `RepairTicket` model.
+
+### After
+
+- **Database & Model:** Added `READY_FOR_REVIEW` to `TicketStatus` enum. Introduced separate cost tracking fields (`laborCost`, `partsCost`, `vendorCost`, `totalRepairCost`, `finalInvoiceAmount`, `profitEstimate`) and execution notes fields to `RepairTicket`.
+- **Workflow & Rules:** Defined transitions from `IN_REPAIR`/`SENT_TO_VENDOR` to `READY_FOR_REVIEW` (triggered by technician) and then to `READY_FOR_DELIVERY` (triggered by admin).
+- **Backend Linkages:** Parts consumption recalculates ticket `partsCost`, vendor jobs recalculate `vendorCost`, and invoicing updates `finalInvoiceAmount` - all dynamically updating `totalRepairCost` and `profitEstimate` inside transaction blocks.
+- **Technician Workspace Redesign:** Redesigned `/technician/repairs` into a tabbed workspace (Assigned, Active, Pending Review, Completed) with a split panel showing execution details, form inputs (Diagnosis, Labor Cost, Est. Completion Time, Repair Notes), and an inline parts consumption console with live cumulative cost snapshot.
+- **Admin Dashboard review queue:** Displays Completed Repairs Review Queue with actions to Approve, Return for rework, or Send to vendor, plus technician workload stats.
+- **Integration Tests:** Updated `erp.integration.test.js` to assert the updated status lifecycle path.
+
+### Files Modified
+
+- [schema.prisma](file:///Users/company%20Project/Reparing/backend-repair/prisma/schema.prisma)
+- [constants.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/repair/constants.js)
+- [workflow.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/repair/workflow.js)
+- [routes.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/repair/routes.js)
+- [validation.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/repair/validation.js)
+- [repository.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/repair/repository.js)
+- [service.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/repair/service.js)
+- [repository.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/inventory/repository.js)
+- [repository.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/vendors/repository.js)
+- [repository.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/billing/repository.js)
+- [validation.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/assignments/validation.js)
+- [repository.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/assignments/repository.js)
+- [routes.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/analytics/routes.js)
+- [controller.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/analytics/controller.js)
+- [service.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/analytics/service.js)
+- [repository.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/analytics/repository.js)
+- [AssignedRepairs.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/AssignedRepairs.jsx)
+- [Dashboard.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Dashboard.jsx)
+- [erp.integration.test.js](file:///Users/company%20Project/Reparing/backend-repair/tests/integration/erp.integration.test.js)
+
+### Verification
+
+All backend tests pass via `npm run test:integration`. The frontend builds successfully via `npm run build`.
+
+---
+
+## Phase 4 Completion Audit & Screen Simplification
+
+### Problem
+
+An audit of the Phase 4 implementation identified fields on the billing (invoice generation), estimate, and handover screens that were overcomplicated and not optimized for real repair business operations.
+
+- The billing / invoice form included internal options (`includeApprovedEstimate`, `includeActualUsage`) and manual extra item insertions that were confusing.
+- The handover form included complex custody holders (technician, vendor, etc.) and routes not necessary for front-desk/admin delivery.
+- The estimate detail screen was basic, and lacked variance analysis metrics, ticket condition details, and problem description.
+
+### Root Cause
+
+The frontend layouts exposed complex technical switches and parameters directly to the user rather than consolidating them to a single flow.
+
+### After
+
+- **Billing & Invoice Simplification:** Updated the invoice generation panel on [Billing.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Billing.jsx) to select candidate tickets and dynamically fetch details. Removed manual charge and source switches. Exposed read-only labor, parts, and vendor costs alongside inputs for Tax and Discount, calculating the Final Invoice Amount dynamically in the UI. Compile actual cost variables to manual items on submit.
+- **Handover Simplification:** Streamlined the record handover panel on [Handover.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Handover.jsx) to only show Ticket selection, read-only Customer and Technician names, Delivery Date, and Notes, automatically routing it to a `RECEPTION_TO_CUSTOMER` custody transfer.
+- **Estimate Detail Redesign:** Expanded [Estimates.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Estimates.jsx) to query related ticket details, displaying Customer Name/Phone/Email, Device Brand/Model/Serial/Condition, Problem description, Technician diagnosis notes, and Admin notes. Rendered an admin cost variance panel showing Estimated Cost, Approved Cost, Actual Cost, and Variance.
+- **Workflow alignment:** Added `READY_FOR_REVIEW` to frontend status constants and transitions in [workflow.js](file:///Users/company%20Project/Reparing/frontend-repair/src/utils/workflow.js).
+
+### Files Modified
+
+- [workflow.js](file:///Users/company%20Project/Reparing/frontend-repair/src/utils/workflow.js)
+- [Billing.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Billing.jsx)
+- [Estimates.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Estimates.jsx)
+- [Handover.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Handover.jsx)
+
+### Verification
+
+All database validations (`npm run db:validate`), integration tests (`npm run test:integration`), and production builds (`npm run build`) completed successfully.
+
+---
+
+## Phase 5: SaaS RBAC & Branch Workflow Refactor
+
+### 1. SaaS Role Hierarchy & Isolation
+
+#### Staff Creation & Role Assignments
+* **Before / Problem:** Owners could create technicians directly and select arbitrary roles from dropdown menus when creating staff. Admins could see the staff menu but received an unauthorized error screen when accessing it.
+* **After / Fix:**
+  - Removed the role selection dropdown from both backend validations and frontend staff creation forms.
+  - Creator roles now implicitly enforce the target role:
+    - `OWNER` creates `ADMIN` members only.
+    - `ADMIN` creates `TECHNICIAN` members only.
+  - Updated frontend route guards in [AppRoutes.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/routes/AppRoutes.jsx) to grant `ADMIN` access to `/staff`, removing the unauthorized screen bug.
+
+#### Staff & Branch Management Scope
+* **Before / Problem:** Owners could manage and modify technician settings directly, violating SaaS branch boundaries where branch admins own the operational staff. Admins were not strictly isolated to managing technicians within their own branch.
+* **After / Fix:**
+  - In `staffService.assertManagedStaff`, enforced that Owners can only manage `ADMIN` members, and Admins can only manage `TECHNICIAN` members in their assigned `branchId`.
+  - Staff listing in `staffService.list` dynamically limits visibility: Owners see only `ADMIN` members; Admins see only `TECHNICIAN` members belonging to their branch.
+  - Modified staff creation to hide the branch selection dropdown for Admins, pre-selecting their branch automatically.
+
+---
+
+### 2. Login Branch Enforcement
+
+#### Login branchName Validation
+* **Before / Problem:** Branch staff (Admins and Technicians) could log in without specifying which branch they belonged to, which caused ambiguity in branch isolation and UI tracking.
+* **After / Fix:**
+  - Modified `loginSchema` in [validation.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/auth/validation.js) to accept `branchName`.
+  - Updated `authService.login` to require `branchName` for `ADMIN` and `TECHNICIAN` accounts, validating it (case-insensitive) against the staff's assigned branch name.
+  - Modified [Login.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Login.jsx) to include a "Branch Name" field in the form.
+
+---
+
+### 3. Operational Admin Dashboard
+
+#### Analytics Dependency Removal
+* **Before / Problem:** The Admin Dashboard was attempting to fetch metrics via the `/analytics/dashboard/admin` endpoint, which was failing with a "Route not found" error and crashing the dashboard query state.
+* **After / Fix:**
+  - Removed all code related to the `/dashboard/admin` route/controller/service on the backend.
+  - Updated the active ticket listing query to select active assignments.
+  - Redesigned [Dashboard.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Dashboard.jsx) to query `repairApi.list({ limit: 100 })` and `staffApi.list()` on the client side, then calculate Pending Tickets, Assigned Tickets, Ready For Review, Pending Billing, Pending Handover, and Technician Workloads dynamically.
+
+---
+
+### 4. Branch Creation Refactor
+
+#### Optional Branch Code
+* **Before / Problem:** Branch creation forced the Owner to input a branch code, which is typically something that can be auto-generated for simplicity.
+* **After / Fix:**
+  - Made the `code` field optional in the branch creation validator and form.
+  - Added auto-generation logic in `branchService.create` to derive a unique code (uppercase prefix of name + random 3-digit suffix) if none is provided.
+
+---
+
+### Files Modified
+- [validation.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/auth/validation.js)
+- [repository.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/auth/repository.js)
+- [service.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/auth/service.js)
+- [routes.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/staff/routes.js) (Cleaned up redundant endpoints)
+- [validation.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/staff/validation.js) (Made role optional and nullable in Zod schema)
+- [service.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/staff/service.js) (Implemented role override and branch validation checks)
+- [validation.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/branches/validation.js)
+- [service.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/branches/service.js)
+- [repository.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/repair/repository.js)
+- [routes.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/analytics/routes.js)
+- [controller.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/analytics/controller.js)
+- [service.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/analytics/service.js)
+- [repository.js](file:///Users/company%20Project/Reparing/backend-repair/src/modules/analytics/repository.js)
+- [Login.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Login.jsx)
+- [AppRoutes.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/routes/AppRoutes.jsx)
+- [navigation.js](file:///Users/company%20Project/Reparing/frontend-repair/src/layouts/navigation.js)
+- [StaffManagement.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/StaffManagement.jsx)
+- [Dashboard.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/Dashboard.jsx)
+- [BranchManagement.jsx](file:///Users/company%20Project/Reparing/frontend-repair/src/pages/BranchManagement.jsx)
+- [modules.js](file:///Users/company%20Project/Reparing/frontend-repair/src/services/modules.js) (Cleaned up redundant createAdmin and createTechnician api calls)
+- [erp.integration.test.js](file:///Users/company%20Project/Reparing/backend-repair/tests/integration/erp.integration.test.js) (Added Staff Creation Role & Branch Enforcement tests)
+
+---
+
+### Bug Fix: Owner Creating Technician instead of Admin
+* **Problem:** In StaffManagement, Owner creates staff without role parameter since role selector is hidden. The Zod validator defaulted role to "TECHNICIAN" which was spread into database creation payload.
+* **Fix:**
+  - Removed default value for `role` in backend Zod schema.
+  - Hardcoded target role inside `staffService.createStaff` (Owner -> ADMIN, Admin -> TECHNICIAN) and strictly mapped creation object keys instead of spreading payload.
+  - Rejected any invalid role options provided in request body with `INVALID_ROLE_COMBINATION` error code.
+  - Enforced that Admins can only assign staff to their own branch, throwing `STAFF_BRANCH_ACCESS_DENIED` / `BRANCH_ACCESS_DENIED`.
+  - Added new integration tests proving these validations function correctly.
+
+
+
+
+

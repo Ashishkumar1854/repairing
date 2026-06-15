@@ -5,6 +5,7 @@ const { assertCanTransition } = require("../repair/workflow");
 const { CUSTODY_HOLDER_TYPES } = require("../handover/constants");
 const assignmentService = require("../assignments/service");
 const vendorRepository = require("./repository");
+const { resolveBranchFilter } = require("../../shared/utils/branchScope");
 const {
   VENDOR_ERRORS,
   VENDOR_REPAIR_STATUSES,
@@ -139,8 +140,13 @@ const updateVendor = async (user, vendorId, payload) => {
 
 const dispatchVendorRepair = async (user, ticketId, payload) => {
   await assignmentService.assertTicketOwnershipForTechnician(user, ticketId);
+  const branchFilter = await resolveBranchFilter(user, payload);
 
-  const ticket = await vendorRepository.findTicketForVendorRepair(user.businessId, ticketId);
+  const ticket = await vendorRepository.findTicketForVendorRepair(
+    user.businessId,
+    ticketId,
+    branchFilter
+  );
 
   if (!ticket) {
     throw mapOutcomeToError("TICKET_NOT_FOUND");
@@ -170,6 +176,7 @@ const dispatchVendorRepair = async (user, ticketId, payload) => {
 
   const result = await vendorRepository.dispatchVendorRepair({
     businessId: user.businessId,
+    branchFilter,
     ticketId,
     vendorId: payload.vendorId,
     actorStaffId: user.staffId,
@@ -189,8 +196,10 @@ const dispatchVendorRepair = async (user, ticketId, payload) => {
 };
 
 const listVendorRepairJobs = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
   const { jobs, total } = await vendorRepository.listVendorRepairJobs({
     businessId: user.businessId,
+    branchFilter,
     query,
   });
 
@@ -206,7 +215,8 @@ const listVendorRepairJobs = async (user, query) => {
 };
 
 const getVendorRepairJob = async (user, jobId) => {
-  const job = await vendorRepository.findVendorRepairJobById(user.businessId, jobId);
+  const branchFilter = await resolveBranchFilter(user);
+  const job = await vendorRepository.findVendorRepairJobById(user.businessId, jobId, branchFilter);
 
   if (!job) {
     throw mapOutcomeToError("JOB_NOT_FOUND");
@@ -216,7 +226,8 @@ const getVendorRepairJob = async (user, jobId) => {
 };
 
 const updateVendorRepairStatus = async (user, jobId, payload) => {
-  const job = await vendorRepository.findVendorRepairJobById(user.businessId, jobId);
+  const branchFilter = await resolveBranchFilter(user, payload);
+  const job = await vendorRepository.findVendorRepairJobById(user.businessId, jobId, branchFilter);
 
   if (!job) {
     throw mapOutcomeToError("JOB_NOT_FOUND");
@@ -226,6 +237,7 @@ const updateVendorRepairStatus = async (user, jobId, payload) => {
 
   const result = await vendorRepository.updateVendorRepairStatus({
     businessId: user.businessId,
+    branchFilter,
     jobId,
     actorStaffId: user.staffId,
     data: payload,
@@ -239,7 +251,8 @@ const updateVendorRepairStatus = async (user, jobId, payload) => {
 };
 
 const receiveVendorRepair = async (user, jobId, payload) => {
-  const job = await vendorRepository.findVendorRepairJobById(user.businessId, jobId);
+  const branchFilter = await resolveBranchFilter(user, payload);
+  const job = await vendorRepository.findVendorRepairJobById(user.businessId, jobId, branchFilter);
 
   if (!job) {
     throw mapOutcomeToError("JOB_NOT_FOUND");
@@ -250,6 +263,7 @@ const receiveVendorRepair = async (user, jobId, payload) => {
 
   const result = await vendorRepository.receiveVendorRepair({
     businessId: user.businessId,
+    branchFilter,
     jobId,
     actorStaffId: user.staffId,
     data: payload,
@@ -268,8 +282,10 @@ const receiveVendorRepair = async (user, jobId, payload) => {
 };
 
 const recordVendorRepairCost = async (user, jobId, payload) => {
+  const branchFilter = await resolveBranchFilter(user, payload);
   const result = await vendorRepository.recordVendorRepairCost({
     businessId: user.businessId,
+    branchFilter,
     jobId,
     actorStaffId: user.staffId,
     data: payload,
@@ -284,7 +300,7 @@ const recordVendorRepairCost = async (user, jobId, payload) => {
 
 const getVendorRepairPermissions = () => ({
   technicianOwnsVendorDispatch: true,
-  managerOverrideRoles: [ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER],
+  managerOverrideRoles: [ROLES.ADMIN],
 });
 
 module.exports = {

@@ -45,6 +45,7 @@ const createTicketSchema = z.object({
       dueAt: z.coerce.date().optional(),
       items: z.array(ticketItemSchema).min(1).max(20),
       issues: z.array(ticketIssueSchema).min(1).max(30),
+      branchId: uuidSchema.optional().nullable(),
       metadata: metadataSchema,
     })
     .superRefine((value, ctx) => {
@@ -66,6 +67,7 @@ const listTicketsSchema = z.object({
     priority: prioritySchema.optional(),
     search: z.string().trim().min(1).max(120).optional(),
     customerId: uuidSchema.optional(),
+    branchId: uuidSchema.optional(),
   }),
 });
 
@@ -73,6 +75,9 @@ const getTicketSchema = z.object({
   params: z.object({
     id: uuidSchema,
   }),
+  query: z.object({
+    branchId: uuidSchema.optional(),
+  }).optional(),
 });
 
 const updateTicketStatusSchema = z.object({
@@ -82,7 +87,26 @@ const updateTicketStatusSchema = z.object({
   body: z.object({
     status: ticketStatusSchema,
     reason: z.string().trim().min(2).max(1000).optional(),
+    branchId: uuidSchema.optional(),
     metadata: metadataSchema,
+  }),
+});
+
+const updateTicketExecutionSchema = z.object({
+  params: z.object({
+    id: uuidSchema,
+  }),
+  body: z.object({
+    diagnosis: z.string().trim().max(5000).optional().nullable(),
+    repairNotes: z.string().trim().max(5000).optional().nullable(),
+    workPerformed: z.string().trim().max(5000).optional().nullable(),
+    laborCost: z.coerce.number().nonnegative().optional(),
+    estimatedCompletionTime: z.preprocess(
+      (val) => (val === "" || val === null ? null : val),
+      z.string().datetime().nullable().optional()
+    ),
+    repairRemarks: z.string().trim().max(5000).optional().nullable(),
+    internalNotes: z.string().trim().max(5000).optional().nullable(),
   }),
 });
 
@@ -91,4 +115,5 @@ module.exports = {
   listTicketsSchema,
   getTicketSchema,
   updateTicketStatusSchema,
+  updateTicketExecutionSchema,
 };

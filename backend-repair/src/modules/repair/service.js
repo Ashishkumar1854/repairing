@@ -5,6 +5,10 @@ const assignmentService = require("../assignments/service");
 const repairRepository = require("./repository");
 const { REPAIR_ERRORS, TICKET_STATUSES } = require("./constants");
 const { assertCanTransition, isTerminalStatus } = require("./workflow");
+const {
+  resolveBranchFilter,
+  resolveBranchIdForWrite,
+} = require("../../shared/utils/branchScope");
 
 const generateTicketNumber = () => {
   const now = new Date();
@@ -16,8 +20,10 @@ const generateTicketNumber = () => {
 };
 
 const createTicket = async (user, payload) => {
+  const branchId = await resolveBranchIdForWrite(user, payload);
   const ticket = await repairRepository.createTicketIntake(user.businessId, user.staffId, {
     ...payload,
+    branchId,
     ticketNumber: generateTicketNumber(),
   });
 
@@ -33,8 +39,10 @@ const createTicket = async (user, payload) => {
 };
 
 const listTickets = async (user, query) => {
+  const branchFilter = await resolveBranchFilter(user, query);
   const { tickets, total } = await repairRepository.listTickets({
     businessId: user.businessId,
+    branchFilter,
     page: query.page,
     limit: query.limit,
     status: query.status,
@@ -55,7 +63,8 @@ const listTickets = async (user, query) => {
 };
 
 const getTicket = async (user, ticketId) => {
-  const ticket = await repairRepository.findTicketById(user.businessId, ticketId);
+  const branchFilter = await resolveBranchFilter(user);
+  const ticket = await repairRepository.findTicketById(user.businessId, ticketId, branchFilter);
 
   if (!ticket) {
     throw new AppError("Repair ticket not found", 404, {
@@ -69,7 +78,8 @@ const getTicket = async (user, ticketId) => {
 };
 
 const updateTicketStatus = async (user, ticketId, payload) => {
-  const currentTicket = await repairRepository.findTicketById(user.businessId, ticketId);
+  const branchFilter = await resolveBranchFilter(user, payload);
+  const currentTicket = await repairRepository.findTicketById(user.businessId, ticketId, branchFilter);
 
   if (!currentTicket) {
     throw new AppError("Repair ticket not found", 404, {
@@ -97,6 +107,7 @@ const updateTicketStatus = async (user, ticketId, payload) => {
     reason: payload.reason,
     metadata: payload.metadata,
     closedAt: isTerminalStatus(payload.status) ? new Date() : currentTicket.closedAt,
+    branchId: currentTicket.branchId,
   });
 
   if (!transitionedTicket) {
@@ -111,9 +122,34 @@ const updateTicketStatus = async (user, ticketId, payload) => {
   };
 };
 
+const updateTicketExecution = async (user, ticketId, payload) => {
+  const branchFilter = await resolveBranchFilter(user, payload);
+  const currentTicket = await repairRepository.findTicketById(user.businessId, ticketId, branchFilter);
+
+  if (!currentTicket) {
+    throw new AppError("Repair ticket not found", 404, {
+      code: REPAIR_ERRORS.TICKET_NOT_FOUND,
+    });
+  }
+
+  await assignmentService.assertTicketOwnershipForTechnician(user, ticketId);
+
+  const updatedTicket = await repairRepository.updateTicketExecution({
+    businessId: user.businessId,
+    ticketId,
+    branchId: currentTicket.branchId,
+    data: payload,
+  });
+
+  return {
+    ticket: updatedTicket,
+  };
+};
+
 module.exports = {
   createTicket,
   listTickets,
   getTicket,
   updateTicketStatus,
+  updateTicketExecution,
 };

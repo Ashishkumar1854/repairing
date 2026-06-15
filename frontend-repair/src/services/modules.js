@@ -1,25 +1,19 @@
-import { get, patch, post } from "@/services/api";
+import { del, get, patch, post } from "@/services/api";
 
 export const authApi = {
   login: (payload) => post("/auth/login", payload),
   me: () => get("/auth/me"),
   logout: () => post("/auth/logout"),
+  forgotPassword: (payload) => post("/auth/forgot-password", payload),
+  resetPassword: (payload) => post("/auth/reset-password", payload),
+  changePassword: (payload) => post("/auth/change-password", payload),
+  getBranchesByEmail: (params) => get("/auth/branches-by-email", params),
 };
 
 export const analyticsApi = {
   ownerDashboard: (params) => get("/analytics/dashboard/owner", params),
-  repairSummary: (params) => get("/analytics/repairs/summary", params),
   statusBreakdown: (params) => get("/analytics/repairs/status-breakdown", params),
-  revenue: (params) => get("/analytics/finance/revenue", params),
-  dues: (params) => get("/analytics/finance/dues", params),
-  payments: (params) => get("/analytics/finance/payments", params),
-  profitability: (params) => get("/analytics/profitability", params),
-  technicianPerformance: (params) => get("/analytics/technicians/performance", params),
   technicianWorkload: (params) => get("/analytics/technicians/workload", params),
-  inventoryUsage: (params) => get("/analytics/inventory/usage", params),
-  inventoryVariance: (params) => get("/analytics/inventory/variance", params),
-  sla: (params) => get("/analytics/sla", params),
-  customers: (params) => get("/analytics/customers", params),
 };
 
 export const repairApi = {
@@ -27,6 +21,7 @@ export const repairApi = {
   get: (id) => get(`/repair/tickets/${id}`),
   create: (payload) => post("/repair/tickets", payload),
   updateStatus: (id, payload) => patch(`/repair/tickets/${id}/status`, payload),
+  updateExecution: (id, payload) => patch(`/repair/tickets/${id}/execution`, payload),
   createEstimate: (ticketId, payload) => post(`/repair/tickets/${ticketId}/estimate`, payload),
   getEstimate: (id) => get(`/repair/estimates/${id}`),
   approveEstimate: (id, payload) => post(`/repair/estimates/${id}/approve`, payload),
@@ -74,4 +69,42 @@ export const vendorsApi = {
   updateJob: (id, payload) => patch(`/vendors/repair-jobs/${id}/status`, payload),
   receiveJob: (id, payload) => post(`/vendors/repair-jobs/${id}/receive`, payload),
   costs: (id, payload) => post(`/vendors/repair-jobs/${id}/costs`, payload),
+};
+
+export const businessProfileApi = {
+  get: () => get("/business/profile"),
+  update: (payload) => patch("/business/profile", payload),
+};
+
+export const branchesApi = {
+  list: () => get("/branches"),
+  create: (payload) => post("/branches", payload),
+  get: (id) => get(`/branches/${id}`),
+  update: (id, payload) => patch(`/branches/${id}`, payload),
+  activate: (id) => post(`/branches/${id}/activate`),
+  deactivate: (id) => post(`/branches/${id}/deactivate`),
+  delete: (id) => del(`/branches/${id}`),
+};
+
+export const staffApi = {
+  list: () => get("/staff"),
+  createStaff: (payload) => post("/staff", payload),
+  disable: (id) => post(`/staff/${id}/disable`),
+  enable: (id) => post(`/staff/${id}/enable`),
+  resetPassword: (id, payload) => post(`/staff/${id}/reset-password`, payload),
+  assignBranch: (id, payload) => patch(`/staff/${id}/branch`, payload),
+  delete: (id) => del(`/staff/${id}`),
+};
+
+export const subscriptionApi = {
+  current: () => get("/subscription/current"),
+};
+
+export const superAdminApi = {
+  businesses: (params) => get("/super-admin/businesses", params),
+  business: (id) => get(`/super-admin/businesses/${id}`),
+  suspend: (id) => patch(`/super-admin/businesses/${id}/suspend`),
+  activate: (id) => patch(`/super-admin/businesses/${id}/activate`),
+  submitContactRequest: (payload) => post("/super-admin/contacts", payload),
+  contacts: () => get("/super-admin/contacts"),
 };

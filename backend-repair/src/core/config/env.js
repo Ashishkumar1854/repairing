@@ -18,7 +18,12 @@ const envSchema = z.object({
   AUTH_LOGIN_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
   AUTH_LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(5),
   NOTIFICATION_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
-  SEED_ADMIN_PASSWORD: z.string().min(8).default("ChangeMe@12345"),
+  SUPER_ADMIN_EMAILS: z.string().min(1),
+  SUPER_ADMIN_PASSWORD: z.string().min(8),
+  OWNER_EMAIL: z.string().trim().email().transform((value) => value.toLowerCase()),
+  OWNER_PASSWORD: z.string().min(8),
+  SEED_ADMIN_EMAIL: z.string().trim().email().transform((value) => value.toLowerCase()).optional(),
+  SEED_ADMIN_PASSWORD: z.string().min(8).optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

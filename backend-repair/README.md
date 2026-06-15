@@ -101,3 +101,22 @@ The current backend QA notes live in:
 ```text
 docs/QA_REPORT.md
 ```
+
+## Phase 5: SaaS RBAC & Branch Workflow
+
+### 1. SaaS Role Hierarchy
+- **SUPER_ADMIN**: SaaS platform owner. Can manage all businesses, subscriptions, and suspend/activate accounts.
+- **OWNER**: Business Owner. Can create branches, view all branches, view all branch dashboards, assign Admins to branches, and manage Admins (disable/enable, reset passwords). Cannot create technicians or manage branch staff directly.
+- **ADMIN**: Branch Owner/Operator. Manages a single branch. Can create technicians for their branch, manage branch staff (disable/enable, reset passwords), and execute all ERP operations (customer, ticket, assignments, billing, handover, inventory).
+- **TECHNICIAN**: Technical Operator. Works only on assigned repair tickets at their branch. Limited workspace access (My Repairs only).
+
+### 2. Branch Workflow Diagram
+```mermaid
+graph TD
+    OWNER[Owner] -->|Creates Branch| BR[Branch]
+    OWNER -->|Creates & Assigns| AD[Branch Admin]
+    AD -->|Manages Branch Operations| BR
+    AD -->|Creates & Assigns| TECH[Branch Technicians]
+    TECH -->|Works on Assigned Tickets| TICK[Repair Tickets]
+```
+

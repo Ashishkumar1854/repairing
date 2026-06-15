@@ -5,6 +5,7 @@ const { TECHNICIAN_ACTIVITY_TYPES } = require("../assignments/constants");
 const ticketSelect = {
   id: true,
   businessId: true,
+  branchId: true,
   customerId: true,
   vendorId: true,
   ticketNumber: true,
@@ -26,6 +27,7 @@ const ticketSelect = {
 
 const handoverSelect = {
   id: true,
+  branchId: true,
   repairTicketId: true,
   type: true,
   fromHolderType: true,
@@ -58,26 +60,39 @@ const handoverSelect = {
   },
 };
 
-const findTicket = (businessId, ticketId) =>
+const withBranchFilter = (where, branchFilter = {}) => {
+  if (branchFilter.branchId) {
+    return {
+      ...where,
+      branchId: branchFilter.branchId,
+    };
+  }
+
+  return where;
+};
+
+const findTicket = (businessId, ticketId, branchFilter = {}) =>
   prisma.repairTicket.findFirst({
-    where: {
+    where: withBranchFilter({
       id: ticketId,
       businessId,
       deletedAt: null,
-    },
+    }, branchFilter),
     select: ticketSelect,
   });
 
-const findStaff = (businessId, staffId) =>
+const findStaff = (businessId, staffId, branchId = null) =>
   prisma.staffMember.findFirst({
     where: {
       id: staffId,
       businessId,
+      ...(branchId ? { branchId } : {}),
       deletedAt: null,
       isActive: true,
     },
     select: {
       id: true,
+      branchId: true,
       fullName: true,
       role: true,
       isActive: true,
@@ -98,10 +113,11 @@ const findVendor = (businessId, vendorId) =>
     },
   });
 
-const findActiveAssignment = (client, businessId, ticketId) =>
+const findActiveAssignment = (client, businessId, ticketId, branchId = null) =>
   client.repairAssignment.findFirst({
     where: {
       businessId,
+      ...(branchId ? { branchId } : {}),
       repairTicketId: ticketId,
       deletedAt: null,
       completedAt: null,
@@ -119,13 +135,14 @@ const findActiveAssignment = (client, businessId, ticketId) =>
     },
   });
 
-const isTechnicianAssigned = async (businessId, ticketId, technicianId) => {
-  const assignment = await findActiveAssignment(prisma, businessId, ticketId);
+const isTechnicianAssigned = async (businessId, ticketId, technicianId, branchId = null) => {
+  const assignment = await findActiveAssignment(prisma, businessId, ticketId, branchId);
   return assignment?.assignedToStaffId === technicianId;
 };
 
 const createHandover = ({
   businessId,
+  branchFilter = {},
   ticketId,
   actorStaffId,
   transfer,
@@ -135,11 +152,11 @@ const createHandover = ({
 }) =>
   prisma.$transaction(async (tx) => {
     const ticket = await tx.repairTicket.findFirst({
-      where: {
+      where: withBranchFilter({
         id: ticketId,
         businessId,
         deletedAt: null,
-      },
+      }, branchFilter),
       select: {
         ...ticketSelect,
         assignments: {
@@ -173,6 +190,7 @@ const createHandover = ({
         where: {
           id: ticketId,
           businessId,
+          branchId: ticket.branchId,
           status: transition.fromStatus,
           deletedAt: null,
         },
@@ -205,6 +223,7 @@ const createHandover = ({
     const handover = await tx.repairTicketHandover.create({
       data: {
         businessId,
+        branchId: ticket.branchId,
         repairTicketId: ticketId,
         vendorId: transfer.vendorId,
         actorStaffId,
@@ -240,6 +259,7 @@ const createHandover = ({
       await tx.repairTechnicianActivityLog.create({
         data: {
           businessId,
+          branchId: ticket.branchId,
           repairTicketId: ticketId,
           technicianId: activityTechnicianId,
           actorStaffId,
@@ -264,8 +284,8 @@ const createHandover = ({
     };
   });
 
-const listTicketHandovers = async (businessId, ticketId) => {
-  const ticket = await findTicket(businessId, ticketId);
+const listTicketHandovers = async (businessId, ticketId, branchFilter = {}) => {
+  const ticket = await findTicket(businessId, ticketId, branchFilter);
 
   if (!ticket) {
     return null;
@@ -274,6 +294,7 @@ const listTicketHandovers = async (businessId, ticketId) => {
   const handovers = await prisma.repairTicketHandover.findMany({
     where: {
       businessId,
+      branchId: ticket.branchId,
       repairTicketId: ticketId,
     },
     orderBy: {

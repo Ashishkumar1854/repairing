@@ -14,6 +14,7 @@ const terminalTicketStatuses = [
 
 const technicianSelect = {
   id: true,
+  branchId: true,
   fullName: true,
   email: true,
   phone: true,
@@ -23,6 +24,7 @@ const technicianSelect = {
 
 const assignmentSelect = {
   id: true,
+  branchId: true,
   repairTicketId: true,
   assignedToStaffId: true,
   assignedByStaffId: true,
@@ -42,6 +44,7 @@ const assignmentSelect = {
 
 const assignmentHistorySelect = {
   id: true,
+  branchId: true,
   repairTicketId: true,
   type: true,
   reason: true,
@@ -63,6 +66,7 @@ const assignmentHistorySelect = {
 
 const ticketQueueSelect = {
   id: true,
+  branchId: true,
   ticketNumber: true,
   title: true,
   status: true,
@@ -104,15 +108,17 @@ const priorityRank = {
   LOW: 1,
 };
 
-const findTicket = (client, businessId, ticketId) =>
+const findTicket = (client, businessId, ticketId, branchFilter = {}) =>
   client.repairTicket.findFirst({
     where: {
       id: ticketId,
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       deletedAt: null,
     },
     select: {
       id: true,
+      branchId: true,
       status: true,
       ticketNumber: true,
       priority: true,
@@ -130,10 +136,11 @@ const findTechnician = (client, businessId, technicianId) =>
     select: technicianSelect,
   });
 
-const findActiveAssignment = (client, businessId, ticketId) =>
+const findActiveAssignment = (client, businessId, ticketId, branchFilter = {}) =>
   client.repairAssignment.findFirst({
     where: {
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       repairTicketId: ticketId,
       deletedAt: null,
       completedAt: null,
@@ -160,12 +167,13 @@ const createAssignment = ({
   notes,
   metadata,
   shouldStartDiagnosis,
+  branchFilter,
 }) =>
   prisma.$transaction(async (tx) => {
     const [ticket, technician, activeAssignment] = await Promise.all([
-      findTicket(tx, businessId, ticketId),
+      findTicket(tx, businessId, ticketId, branchFilter),
       findTechnician(tx, businessId, technicianId),
-      findActiveAssignment(tx, businessId, ticketId),
+      findActiveAssignment(tx, businessId, ticketId, branchFilter),
     ]);
 
     if (!ticket) {
@@ -188,6 +196,10 @@ const createAssignment = ({
       return { outcome: "INVALID_TECHNICIAN_ROLE" };
     }
 
+    if (technician.branchId !== ticket.branchId) {
+      return { outcome: "TECHNICIAN_NOT_FOUND" };
+    }
+
     if (activeAssignment?.assignedToStaffId === technicianId) {
       return { outcome: "ALREADY_ASSIGNED", assignment: activeAssignment };
     }
@@ -203,6 +215,7 @@ const createAssignment = ({
         where: {
           id: ticketId,
           businessId,
+          branchId: ticket.branchId,
           status: TICKET_STATUSES.RECEIVED,
           deletedAt: null,
         },
@@ -233,6 +246,7 @@ const createAssignment = ({
     const assignment = await tx.repairAssignment.create({
       data: {
         businessId,
+        branchId: ticket.branchId,
         repairTicketId: ticketId,
         assignedToStaffId: technicianId,
         assignedByStaffId: actorStaffId,
@@ -245,6 +259,7 @@ const createAssignment = ({
     const history = await tx.repairTicketAssignment.create({
       data: {
         businessId,
+        branchId: ticket.branchId,
         repairTicketId: ticketId,
         assignedToStaffId: technicianId,
         assignedByStaffId: actorStaffId,
@@ -257,6 +272,7 @@ const createAssignment = ({
 
     await createActivityLog(tx, {
       businessId,
+      branchId: ticket.branchId,
       repairTicketId: ticketId,
       technicianId,
       actorStaffId,
@@ -281,12 +297,13 @@ const reassignTicket = ({
   reason,
   notes,
   metadata,
+  branchFilter,
 }) =>
   prisma.$transaction(async (tx) => {
     const [ticket, technician, activeAssignment] = await Promise.all([
-      findTicket(tx, businessId, ticketId),
+      findTicket(tx, businessId, ticketId, branchFilter),
       findTechnician(tx, businessId, technicianId),
-      findActiveAssignment(tx, businessId, ticketId),
+      findActiveAssignment(tx, businessId, ticketId, branchFilter),
     ]);
 
     if (!ticket) {
@@ -307,6 +324,10 @@ const reassignTicket = ({
 
     if (technician.role !== "TECHNICIAN") {
       return { outcome: "INVALID_TECHNICIAN_ROLE" };
+    }
+
+    if (technician.branchId !== ticket.branchId) {
+      return { outcome: "TECHNICIAN_NOT_FOUND" };
     }
 
     if (!activeAssignment) {
@@ -332,6 +353,7 @@ const reassignTicket = ({
     const assignment = await tx.repairAssignment.create({
       data: {
         businessId,
+        branchId: ticket.branchId,
         repairTicketId: ticketId,
         assignedToStaffId: technicianId,
         assignedByStaffId: actorStaffId,
@@ -344,6 +366,7 @@ const reassignTicket = ({
     const history = await tx.repairTicketAssignment.create({
       data: {
         businessId,
+        branchId: ticket.branchId,
         repairTicketId: ticketId,
         assignedToStaffId: technicianId,
         previousAssignedToStaffId: activeAssignment.assignedToStaffId,
@@ -359,6 +382,7 @@ const reassignTicket = ({
 
     await createActivityLog(tx, {
       businessId,
+      branchId: ticket.branchId,
       repairTicketId: ticketId,
       technicianId,
       actorStaffId,
@@ -379,10 +403,11 @@ const reassignTicket = ({
     };
   });
 
-const listAssignmentHistory = (businessId, ticketId) =>
+const listAssignmentHistory = (businessId, ticketId, branchFilter = {}) =>
   prisma.repairTicketAssignment.findMany({
     where: {
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       repairTicketId: ticketId,
     },
     select: assignmentHistorySelect,
@@ -391,23 +416,26 @@ const listAssignmentHistory = (businessId, ticketId) =>
     },
   });
 
-const findTicketForHistory = (businessId, ticketId) =>
+const findTicketForHistory = (businessId, ticketId, branchFilter = {}) =>
   prisma.repairTicket.findFirst({
     where: {
       id: ticketId,
       businessId,
+      ...(branchFilter.branchId ? { branchId: branchFilter.branchId } : {}),
       deletedAt: null,
     },
     select: {
       id: true,
+      branchId: true,
       ticketNumber: true,
     },
   });
 
-const isTechnicianAssignedToTicket = async (businessId, technicianId, ticketId) => {
+const isTechnicianAssignedToTicket = async (businessId, technicianId, ticketId, branchId) => {
   const assignment = await prisma.repairAssignment.findFirst({
     where: {
       businessId,
+      ...(branchId ? { branchId } : {}),
       repairTicketId: ticketId,
       assignedToStaffId: technicianId,
       completedAt: null,
@@ -424,23 +452,45 @@ const isTechnicianAssignedToTicket = async (businessId, technicianId, ticketId) 
   return Boolean(assignment);
 };
 
-const buildQueueWhere = ({ businessId, technicianId, status, priority }) => {
+const buildQueueWhere = ({ businessId, branchId, technicianId, status, priority, statusGroup }) => {
   const where = {
     businessId,
+    ...(branchId ? { branchId } : {}),
     assignedToStaffId: technicianId,
-    completedAt: null,
     deletedAt: null,
-    status: {
-      in: activeAssignmentStatuses,
-    },
     ticket: {
       businessId,
+      ...(branchId ? { branchId } : {}),
       deletedAt: null,
-      status: {
-        notIn: terminalTicketStatuses,
-      },
     },
   };
+
+  if (statusGroup === "completed") {
+    where.ticket.status = {
+      in: [TICKET_STATUSES.READY_FOR_DELIVERY, TICKET_STATUSES.DELIVERED, TICKET_STATUSES.CLOSED],
+    };
+  } else {
+    where.completedAt = null;
+    where.status = {
+      in: activeAssignmentStatuses,
+    };
+
+    if (statusGroup === "assigned") {
+      where.ticket.status = {
+        in: [TICKET_STATUSES.DIAGNOSING, TICKET_STATUSES.APPROVED],
+      };
+    } else if (statusGroup === "active") {
+      where.ticket.status = {
+        in: [TICKET_STATUSES.IN_REPAIR, TICKET_STATUSES.WAITING_PARTS, TICKET_STATUSES.SENT_TO_VENDOR],
+      };
+    } else if (statusGroup === "pending_review") {
+      where.ticket.status = TICKET_STATUSES.READY_FOR_REVIEW;
+    } else {
+      where.ticket.status = {
+        notIn: terminalTicketStatuses,
+      };
+    }
+  }
 
   if (status) {
     where.ticket.status = status;
@@ -501,13 +551,15 @@ const sortQueueAssignments = (assignments, sort) => {
   });
 };
 
-const getTechnicianQueue = async ({ businessId, technicianId, query }) => {
+const getTechnicianQueue = async ({ businessId, branchId, technicianId, query }) => {
   const assignments = await prisma.repairAssignment.findMany({
     where: buildQueueWhere({
       businessId,
+      branchId,
       technicianId,
       status: query.status,
       priority: query.priority,
+      statusGroup: query.statusGroup,
     }),
     select: {
       id: true,
@@ -533,98 +585,124 @@ const getTechnicianQueue = async ({ businessId, technicianId, query }) => {
   };
 };
 
-const getTechnicianDashboard = async ({ businessId, technicianId }) => {
+const getTechnicianDashboard = async ({ businessId, branchId, technicianId }) => {
+  const toNumberVal = (val) => Number(val || 0);
+
+  const allAssignments = await prisma.repairAssignment.findMany({
+    where: {
+      businessId,
+      ...(branchId ? { branchId } : {}),
+      assignedToStaffId: technicianId,
+      deletedAt: null,
+    },
+    include: {
+      ticket: {
+        select: {
+          id: true,
+          status: true,
+          laborCost: true,
+          partsCost: true,
+          createdAt: true,
+          closedAt: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+
+  const totalRepairs = allAssignments.length;
+  const assignedRepairs = allAssignments.filter((a) =>
+    [TICKET_STATUSES.DIAGNOSING, TICKET_STATUSES.APPROVED].includes(a.ticket.status)
+  ).length;
+  const repairsInProgress = allAssignments.filter((a) =>
+    [TICKET_STATUSES.IN_REPAIR, TICKET_STATUSES.WAITING_PARTS, TICKET_STATUSES.SENT_TO_VENDOR].includes(
+      a.ticket.status
+    )
+  ).length;
+  const pendingReview = allAssignments.filter(
+    (a) => a.ticket.status === TICKET_STATUSES.READY_FOR_REVIEW
+  ).length;
+  const repairsCompleted = allAssignments.filter((a) =>
+    [TICKET_STATUSES.READY_FOR_DELIVERY, TICKET_STATUSES.DELIVERED, TICKET_STATUSES.CLOSED].includes(
+      a.ticket.status
+    )
+  ).length;
+
+  const laborGenerated = allAssignments.reduce((sum, a) => sum + toNumberVal(a.ticket.laborCost), 0);
+  const partsUsed = allAssignments.reduce((sum, a) => sum + toNumberVal(a.ticket.partsCost), 0);
+
+  const completedTickets = allAssignments.filter((a) =>
+    [
+      TICKET_STATUSES.READY_FOR_REVIEW,
+      TICKET_STATUSES.READY_FOR_DELIVERY,
+      TICKET_STATUSES.DELIVERED,
+      TICKET_STATUSES.CLOSED,
+    ].includes(a.ticket.status)
+  );
+
+  let totalTimeMs = 0;
+  let timeCount = 0;
+  for (const a of completedTickets) {
+    const end = a.ticket.closedAt || a.ticket.updatedAt;
+    const start = a.assignedAt;
+    if (end && start) {
+      totalTimeMs += new Date(end).getTime() - new Date(start).getTime();
+      timeCount++;
+    }
+  }
+  const averageCompletionTimeHours =
+    timeCount > 0 ? Number((totalTimeMs / timeCount / (1000 * 60 * 60)).toFixed(2)) : 0;
+
   const now = new Date();
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
 
-  const activeWhere = buildQueueWhere({ businessId, technicianId });
+  const currentMonthAssignments = allAssignments.filter((a) => {
+    const end = a.ticket.closedAt || a.ticket.updatedAt;
+    if (!end) return false;
+    const endDate = new Date(end);
+    return endDate.getFullYear() === currentYear && endDate.getMonth() === currentMonth;
+  });
 
-  const [
-    activeAssignments,
-    waitingApprovalCount,
-    inRepairCount,
-    waitingPartsCount,
-    completedToday,
-    overdueTickets,
-    consumptionSummary,
-  ] = await prisma.$transaction([
-    prisma.repairAssignment.count({ where: activeWhere }),
-    prisma.repairAssignment.count({
-      where: {
-        ...activeWhere,
-        ticket: {
-          ...activeWhere.ticket,
-          status: TICKET_STATUSES.WAITING_APPROVAL,
-        },
-      },
-    }),
-    prisma.repairAssignment.count({
-      where: {
-        ...activeWhere,
-        ticket: {
-          ...activeWhere.ticket,
-          status: TICKET_STATUSES.IN_REPAIR,
-        },
-      },
-    }),
-    prisma.repairAssignment.count({
-      where: {
-        ...activeWhere,
-        ticket: {
-          ...activeWhere.ticket,
-          status: TICKET_STATUSES.WAITING_PARTS,
-        },
-      },
-    }),
-    prisma.repairTechnicianActivityLog.count({
-      where: {
-        businessId,
-        technicianId,
-        type: TECHNICIAN_ACTIVITY_TYPES.REPAIR_COMPLETED,
-        createdAt: {
-          gte: startOfDay,
-        },
-      },
-    }),
-    prisma.repairAssignment.count({
-      where: {
-        ...activeWhere,
-        ticket: {
-          ...activeWhere.ticket,
-          dueAt: {
-            lt: now,
-          },
-        },
-      },
-    }),
-    prisma.repairPartsUsage.aggregate({
-      where: {
-        businessId,
-        technicianId,
-        deletedAt: null,
-      },
-      _sum: {
-        quantity: true,
-        totalCost: true,
-      },
-      _count: {
-        id: true,
-      },
-    }),
-  ]);
+  const monthlyCompleted = currentMonthAssignments.filter((a) =>
+    [
+      TICKET_STATUSES.READY_FOR_REVIEW,
+      TICKET_STATUSES.READY_FOR_DELIVERY,
+      TICKET_STATUSES.DELIVERED,
+      TICKET_STATUSES.CLOSED,
+    ].includes(a.ticket.status)
+  ).length;
+
+  const monthlyLabor = currentMonthAssignments.reduce((sum, a) => sum + toNumberVal(a.ticket.laborCost), 0);
+  const monthlyParts = currentMonthAssignments.reduce((sum, a) => sum + toNumberVal(a.ticket.partsCost), 0);
 
   return {
-    activeAssignments,
-    waitingApprovalCount,
-    inRepairCount,
-    waitingPartsCount,
-    completedToday,
-    overdueTickets,
-    inventoryConsumption: {
-      usageCount: consumptionSummary._count.id,
-      totalQuantity: consumptionSummary._sum.quantity || "0.00",
-      totalCost: consumptionSummary._sum.totalCost || "0.00",
+    activeAssignments: repairsInProgress + assignedRepairs,
+    assignedRepairs,
+    repairsInProgress,
+    repairsCompleted,
+    pendingReview,
+    laborGenerated,
+    partsUsed,
+    averageCompletionTimeHours,
+    summary: {
+      totalRepairs,
+      completedRepairs: repairsCompleted,
+      pendingRepairs: assignedRepairs + repairsInProgress + pendingReview,
+      laborGenerated,
+      partsUsed,
+      averageCompletionTimeHours,
+    },
+    monthlySummary: {
+      completedRepairs: monthlyCompleted,
+      laborGenerated: monthlyLabor,
+      partsUsed: monthlyParts,
+    },
+    counts: {
+      assigned: assignedRepairs,
+      inProgress: repairsInProgress,
+      pendingReview,
+      completed: repairsCompleted,
     },
   };
 };

@@ -7,6 +7,7 @@ export const ticketStatuses = [
   "IN_REPAIR",
   "WAITING_PARTS",
   "SENT_TO_VENDOR",
+  "READY_FOR_REVIEW",
   "READY_FOR_DELIVERY",
   "DELIVERED",
   "CANCELLED",
@@ -19,9 +20,10 @@ export const repairStatusTransitions = Object.freeze({
   ESTIMATE_PENDING: ["WAITING_APPROVAL", "CANCELLED"],
   WAITING_APPROVAL: ["APPROVED", "CANCELLED"],
   APPROVED: ["IN_REPAIR", "WAITING_PARTS", "SENT_TO_VENDOR"],
-  IN_REPAIR: ["WAITING_PARTS", "SENT_TO_VENDOR", "READY_FOR_DELIVERY", "CANCELLED"],
+  IN_REPAIR: ["WAITING_PARTS", "SENT_TO_VENDOR", "READY_FOR_REVIEW", "READY_FOR_DELIVERY", "CANCELLED"],
   WAITING_PARTS: ["IN_REPAIR", "SENT_TO_VENDOR", "CANCELLED"],
-  SENT_TO_VENDOR: ["IN_REPAIR", "READY_FOR_DELIVERY", "CANCELLED"],
+  SENT_TO_VENDOR: ["IN_REPAIR", "READY_FOR_REVIEW", "READY_FOR_DELIVERY", "CANCELLED"],
+  READY_FOR_REVIEW: ["IN_REPAIR", "SENT_TO_VENDOR", "READY_FOR_DELIVERY", "CANCELLED"],
   READY_FOR_DELIVERY: ["DELIVERED", "IN_REPAIR"],
   DELIVERED: ["CLOSED"],
   CANCELLED: ["CLOSED"],
@@ -46,11 +48,19 @@ export const isBillingEligibleTicket = (ticket, invoices = []) => {
     return false;
   }
 
+  const billableStatus = ["APPROVED", "IN_REPAIR", "WAITING_PARTS", "READY_FOR_DELIVERY", "DELIVERED"].includes(ticket.status);
+  const hasEstimateData = Array.isArray(ticket.estimates) && ticket.estimates.length > 0;
+  const hasUsageData = Array.isArray(ticket.partsUsage) || Array.isArray(ticket.partsUsages);
   const hasBillableEstimate = (ticket.estimates || []).some((estimate) => estimate.status === "APPROVED");
   const hasActualUsage = (ticket.partsUsage || ticket.partsUsages || []).length > 0;
-  const billableStatus = ["APPROVED", "IN_REPAIR", "WAITING_PARTS", "READY_FOR_DELIVERY", "DELIVERED"].includes(ticket.status);
 
-  return billableStatus && (hasBillableEstimate || hasActualUsage);
+  if (!billableStatus) return false;
+
+  if (!hasEstimateData && !hasUsageData) {
+    return true;
+  }
+
+  return hasBillableEstimate || hasActualUsage;
 };
 
 export const payableInvoices = (invoices = []) =>

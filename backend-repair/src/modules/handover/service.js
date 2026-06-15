@@ -2,6 +2,7 @@ const AppError = require("../../shared/errors/AppError");
 const { ROLES } = require("../auth/constants");
 const { TICKET_STATUSES } = require("../repair/constants");
 const { assertCanTransition } = require("../repair/workflow");
+const { resolveBranchFilter } = require("../../shared/utils/branchScope");
 const handoverRepository = require("./repository");
 const {
   CUSTODY_HOLDER_TYPES,
@@ -101,7 +102,7 @@ const resolveToHolder = async (businessId, ticket, payload, expectedTo) => {
       });
     }
 
-    const staff = await handoverRepository.findStaff(businessId, staffId);
+    const staff = await handoverRepository.findStaff(businessId, staffId, ticket.branchId);
 
     if (!staff || staff.role !== ROLES.TECHNICIAN) {
       throw new AppError("Target technician was not found", 404, {
@@ -159,7 +160,8 @@ const assertRoleCanPerformTransfer = async (user, ticketId, payload, expectedFro
     const assigned = await handoverRepository.isTechnicianAssigned(
       user.businessId,
       ticketId,
-      user.staffId
+      user.staffId,
+      user.branchId
     );
 
     if (!assigned) {
@@ -168,23 +170,6 @@ const assertRoleCanPerformTransfer = async (user, ticketId, payload, expectedFro
       });
     }
 
-    return;
-  }
-
-  if (user.role === ROLES.FRONT_DESK) {
-    const allowed = [
-      HANDOVER_TYPES.RECEPTION_TO_TECHNICIAN,
-      HANDOVER_TYPES.RECEPTION_TO_CUSTOMER,
-      HANDOVER_TYPES.VENDOR_TO_RECEPTION,
-      HANDOVER_TYPES.STORAGE_TRANSFER,
-      HANDOVER_TYPES.INTERNAL_TRANSFER,
-    ];
-
-    if (!allowed.includes(payload.type)) {
-      throw new AppError("Front desk cannot perform this handover type", 403, {
-        code: HANDOVER_ERRORS.INVALID_TRANSFER,
-      });
-    }
   }
 };
 
@@ -275,7 +260,8 @@ const resolveActivityTechnician = (user, ticket, expectedFrom, expectedTo, toHol
 };
 
 const createHandover = async (user, ticketId, payload) => {
-  const ticket = await handoverRepository.findTicket(user.businessId, ticketId);
+  const branchFilter = await resolveBranchFilter(user, payload);
+  const ticket = await handoverRepository.findTicket(user.businessId, ticketId, branchFilter);
 
   if (!ticket) {
     throw new AppError("Repair ticket not found", 404, {
@@ -305,6 +291,7 @@ const createHandover = async (user, ticketId, payload) => {
 
   const result = await handoverRepository.createHandover({
     businessId: user.businessId,
+    branchFilter,
     ticketId,
     actorStaffId: user.staffId,
     workflowTransitions,
@@ -340,7 +327,8 @@ const createHandover = async (user, ticketId, payload) => {
 };
 
 const getTicketHandovers = async (user, ticketId) => {
-  const result = await handoverRepository.listTicketHandovers(user.businessId, ticketId);
+  const branchFilter = await resolveBranchFilter(user);
+  const result = await handoverRepository.listTicketHandovers(user.businessId, ticketId, branchFilter);
 
   if (!result) {
     throw new AppError("Repair ticket not found", 404, {
@@ -352,7 +340,8 @@ const getTicketHandovers = async (user, ticketId) => {
 };
 
 const getCurrentCustody = async (user, ticketId) => {
-  const ticket = await handoverRepository.findTicket(user.businessId, ticketId);
+  const branchFilter = await resolveBranchFilter(user);
+  const ticket = await handoverRepository.findTicket(user.businessId, ticketId, branchFilter);
 
   if (!ticket) {
     throw new AppError("Repair ticket not found", 404, {

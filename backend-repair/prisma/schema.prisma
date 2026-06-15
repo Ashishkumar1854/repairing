@@ -24,6 +24,7 @@ enum TicketStatus {
   IN_REPAIR
   WAITING_PARTS
   SENT_TO_VENDOR
+  READY_FOR_REVIEW
   READY_FOR_DELIVERY
   DELIVERED
   CANCELLED
@@ -121,12 +122,29 @@ enum TechnicianActivityType {
 }
 
 enum StaffRole {
+  SUPER_ADMIN
   OWNER
   ADMIN
-  MANAGER
   TECHNICIAN
-  FRONT_DESK
-  ACCOUNTANT
+}
+
+enum BusinessStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum SubscriptionPlan {
+  STARTER
+  GROWTH
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  EXPIRED
+  SUSPENDED
+  CANCELLED
 }
 
 enum EstimateStatus {
@@ -199,21 +217,37 @@ enum VendorRepairCostStatus {
   CANCELLED
 }
 
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+}
+
 model Business {
-  id        String       @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String       @unique
-  type      BusinessType @default(REPAIR_SHOP)
-  email     String?
-  phone     String?
-  address   String?
-  metadata  Json?
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
-  deletedAt DateTime?    @map("deleted_at")
+  id          String         @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String         @unique
+  type        BusinessType   @default(REPAIR_SHOP)
+  status      BusinessStatus @default(ACTIVE)
+  description String?
+  logo        String?
+  banner      String?
+  email       String?
+  phone       String?
+  website     String?
+  country     String?
+  state       String?
+  city        String?
+  address     String?
+  gstNumber   String?        @map("gst_number")
+  metadata    Json?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at")
 
   customers          Customer[]
   staff              StaffMember[]
+  branches           Branch[]
+  subscription       Subscription?
   vendors            Vendor[]
   tickets            RepairTicket[]
   inventoryItems     InventoryItem[]
@@ -227,12 +261,73 @@ model Business {
   vendorCostLogs     VendorRepairCostLog[]
 
   @@index([deletedAt])
+  @@index([status])
   @@map("businesses")
+}
+
+model Branch {
+  id           String       @id @default(uuid()) @db.Uuid
+  businessId   String       @map("business_id") @db.Uuid
+  name         String
+  code         String
+  phone        String?
+  email        String?
+  address      String?
+  isMainBranch Boolean      @default(false) @map("is_main_branch")
+  status       BranchStatus @default(ACTIVE)
+  metadata     Json?
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  deletedAt    DateTime?    @map("deleted_at")
+
+  business           Business                 @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  customers          Customer[]
+  staff              StaffMember[]
+  tickets            RepairTicket[]
+  estimates          RepairEstimate[]
+  assignments        RepairAssignment[]
+  assignmentHistory  RepairTicketAssignment[]
+  technicianLogs     RepairTechnicianActivityLog[]
+  inventoryItems     InventoryItem[]
+  inventoryMovements InventoryStockMovement[]
+  partsUsages        RepairPartsUsage[]
+  invoices           RepairInvoice[]
+  payments           RepairPayment[]
+  ledgerEntries      CustomerFinancialLedger[]
+  financialAuditLogs RepairFinancialAuditLog[]
+  ticketHandovers    RepairTicketHandover[]
+  vendorRepairJobs   VendorRepairJob[]
+  vendorRepairLogs   VendorRepairStatusLog[]
+  vendorCostLogs     VendorRepairCostLog[]
+
+  @@unique([businessId, code])
+  @@index([businessId, status])
+  @@index([businessId, isMainBranch])
+  @@map("branches")
+}
+
+model Subscription {
+  id         String             @id @default(uuid()) @db.Uuid
+  businessId String             @unique @map("business_id") @db.Uuid
+  plan       SubscriptionPlan   @default(STARTER)
+  status     SubscriptionStatus @default(ACTIVE)
+  startsAt   DateTime           @default(now()) @map("starts_at")
+  expiresAt  DateTime?          @map("expires_at")
+  metadata   Json?
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+  @@index([plan])
+  @@map("subscriptions")
 }
 
 model Customer {
   id         String    @id @default(uuid()) @db.Uuid
   businessId String    @map("business_id") @db.Uuid
+  branchId   String    @map("branch_id") @db.Uuid
   fullName   String    @map("full_name")
   email      String?
   phone      String
@@ -243,12 +338,13 @@ model Customer {
   deletedAt  DateTime? @map("deleted_at")
 
   business      Business                  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch        Branch                    @relation(fields: [branchId], references: [id], onDelete: Restrict)
   tickets       RepairTicket[]
   invoices      RepairInvoice[]
   ledgerEntries CustomerFinancialLedger[]
 
-  @@unique([businessId, phone])
-  @@index([businessId, deletedAt])
+  @@unique([businessId, branchId, phone])
+  @@index([businessId, branchId, deletedAt])
   @@index([businessId, fullName])
   @@map("customers")
 }
@@ -256,12 +352,15 @@ model Customer {
 model StaffMember {
   id                    String    @id @default(uuid()) @db.Uuid
   businessId            String    @map("business_id") @db.Uuid
+  branchId              String?   @map("branch_id") @db.Uuid
   fullName              String    @map("full_name")
   email                 String
   phone                 String?
   passwordHash          String    @map("password_hash")
   refreshTokenHash      String?   @map("refresh_token_hash")
   refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  passwordResetTokenHash      String?   @map("password_reset_token_hash")
+  passwordResetExpiresAt      DateTime? @map("password_reset_expires_at")
   role                  StaffRole @default(TECHNICIAN)
   isActive              Boolean   @default(true) @map("is_active")
   metadata              Json?
@@ -270,6 +369,7 @@ model StaffMember {
   deletedAt             DateTime? @map("deleted_at")
 
   business                      Business                      @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch                        Branch?                       @relation(fields: [branchId], references: [id], onDelete: Restrict)
   assignedTickets               RepairAssignment[]            @relation("AssignedTechnician")
   assignedByRecords             RepairAssignment[]            @relation("AssignedByStaff")
   assignmentHistoryAsTechnician RepairTicketAssignment[]      @relation("AssignmentHistoryAssignedTechnician")
@@ -300,6 +400,7 @@ model StaffMember {
   handoversReceived             RepairHandoverLog[]           @relation("HandoverToStaff")
 
   @@unique([businessId, email])
+  @@index([businessId, branchId])
   @@index([businessId, role, isActive])
   @@index([businessId, deletedAt])
   @@map("staff_members")
@@ -334,6 +435,7 @@ model Vendor {
 model RepairTicket {
   id                String            @id @default(uuid()) @db.Uuid
   businessId        String            @map("business_id") @db.Uuid
+  branchId          String            @map("branch_id") @db.Uuid
   customerId        String            @map("customer_id") @db.Uuid
   vendorId          String?           @map("vendor_id") @db.Uuid
   ticketNumber      String            @map("ticket_number")
@@ -349,12 +451,25 @@ model RepairTicket {
   receivedAt        DateTime          @default(now()) @map("received_at")
   dueAt             DateTime?         @map("due_at")
   closedAt          DateTime?         @map("closed_at")
+  laborCost         Decimal           @default(0) @map("labor_cost") @db.Decimal(12, 2)
+  partsCost         Decimal           @default(0) @map("parts_cost") @db.Decimal(12, 2)
+  vendorCost        Decimal           @default(0) @map("vendor_cost") @db.Decimal(12, 2)
+  totalRepairCost   Decimal           @default(0) @map("total_repair_cost") @db.Decimal(12, 2)
+  finalInvoiceAmount Decimal          @default(0) @map("final_invoice_amount") @db.Decimal(12, 2)
+  profitEstimate    Decimal           @default(0) @map("profit_estimate") @db.Decimal(12, 2)
+  diagnosis         String?
+  repairNotes       String?           @map("repair_notes")
+  workPerformed     String?           @map("work_performed")
+  estimatedCompletionTime DateTime?   @map("estimated_completion_time")
+  repairRemarks     String?           @map("repair_remarks")
+  internalNotes     String?           @map("internal_notes")
   metadata          Json?
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
   deletedAt         DateTime?         @map("deleted_at")
 
   business             Business                      @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch               Branch                        @relation(fields: [branchId], references: [id], onDelete: Restrict)
   customer             Customer                      @relation(fields: [customerId], references: [id], onDelete: Restrict)
   vendor               Vendor?                       @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   items                RepairTicketItem[]
@@ -376,6 +491,7 @@ model RepairTicket {
   vendorRepairJobs     VendorRepairJob[]
 
   @@unique([businessId, ticketNumber])
+  @@index([businessId, branchId, status])
   @@index([businessId, status, priority])
   @@index([businessId, customerId])
   @@index([businessId, vendorId])
@@ -471,6 +587,7 @@ model RepairStatusLog {
 model RepairAssignment {
   id                String           @id @default(uuid()) @db.Uuid
   businessId        String           @map("business_id") @db.Uuid
+  branchId          String           @map("branch_id") @db.Uuid
   repairTicketId    String           @map("repair_ticket_id") @db.Uuid
   assignedToStaffId String           @map("assigned_to_staff_id") @db.Uuid
   assignedByStaffId String?          @map("assigned_by_staff_id") @db.Uuid
@@ -483,10 +600,12 @@ model RepairAssignment {
   deletedAt         DateTime?        @map("deleted_at")
 
   ticket     RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  branch     Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
   assignedTo StaffMember  @relation("AssignedTechnician", fields: [assignedToStaffId], references: [id], onDelete: Restrict)
   assignedBy StaffMember? @relation("AssignedByStaff", fields: [assignedByStaffId], references: [id], onDelete: SetNull)
 
   @@index([businessId, repairTicketId])
+  @@index([businessId, branchId, assignedToStaffId])
   @@index([businessId, assignedToStaffId, status])
   @@index([businessId, deletedAt])
   @@map("repair_assignments")
@@ -495,6 +614,7 @@ model RepairAssignment {
 model RepairTicketAssignment {
   id                        String              @id @default(uuid()) @db.Uuid
   businessId                String              @map("business_id") @db.Uuid
+  branchId                  String              @map("branch_id") @db.Uuid
   repairTicketId            String              @map("repair_ticket_id") @db.Uuid
   assignedToStaffId         String              @map("assigned_to_staff_id") @db.Uuid
   previousAssignedToStaffId String?             @map("previous_assigned_to_staff_id") @db.Uuid
@@ -508,11 +628,13 @@ model RepairTicketAssignment {
   createdAt                 DateTime            @default(now()) @map("created_at")
 
   ticket             RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  branch             Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
   assignedTo         StaffMember  @relation("AssignmentHistoryAssignedTechnician", fields: [assignedToStaffId], references: [id], onDelete: Restrict)
   previousAssignedTo StaffMember? @relation("AssignmentHistoryPreviousTechnician", fields: [previousAssignedToStaffId], references: [id], onDelete: SetNull)
   assignedBy         StaffMember? @relation("AssignmentHistoryActor", fields: [assignedByStaffId], references: [id], onDelete: SetNull)
 
   @@index([businessId, repairTicketId, assignedAt])
+  @@index([businessId, branchId, assignedAt])
   @@index([businessId, assignedToStaffId, assignedAt])
   @@index([businessId, previousAssignedToStaffId])
   @@index([businessId, type])
@@ -522,6 +644,7 @@ model RepairTicketAssignment {
 model RepairTechnicianActivityLog {
   id             String                 @id @default(uuid()) @db.Uuid
   businessId     String                 @map("business_id") @db.Uuid
+  branchId       String                 @map("branch_id") @db.Uuid
   repairTicketId String                 @map("repair_ticket_id") @db.Uuid
   technicianId   String                 @map("technician_id") @db.Uuid
   actorStaffId   String?                @map("actor_staff_id") @db.Uuid
@@ -531,10 +654,12 @@ model RepairTechnicianActivityLog {
   createdAt      DateTime               @default(now()) @map("created_at")
 
   ticket     RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  branch     Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
   technician StaffMember  @relation("TechnicianActivityStaff", fields: [technicianId], references: [id], onDelete: Restrict)
   actor      StaffMember? @relation("TechnicianActivityActor", fields: [actorStaffId], references: [id], onDelete: SetNull)
 
   @@index([businessId, repairTicketId, createdAt])
+  @@index([businessId, branchId, createdAt])
   @@index([businessId, technicianId, createdAt])
   @@index([businessId, type])
   @@map("repair_technician_activity_logs")
@@ -543,6 +668,7 @@ model RepairTechnicianActivityLog {
 model RepairEstimate {
   id             String         @id @default(uuid()) @db.Uuid
   businessId     String         @map("business_id") @db.Uuid
+  branchId       String         @map("branch_id") @db.Uuid
   repairTicketId String         @map("repair_ticket_id") @db.Uuid
   createdById    String?        @map("created_by_id") @db.Uuid
   approvedById   String?        @map("approved_by_id") @db.Uuid
@@ -565,6 +691,7 @@ model RepairEstimate {
   deletedAt      DateTime?      @map("deleted_at")
 
   ticket     RepairTicket             @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  branch     Branch                   @relation(fields: [branchId], references: [id], onDelete: Restrict)
   createdBy  StaffMember?             @relation("EstimateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   approvedBy StaffMember?             @relation("EstimateApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   rejectedBy StaffMember?             @relation("EstimateRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
@@ -573,6 +700,7 @@ model RepairEstimate {
   invoices   RepairInvoice[]
 
   @@unique([businessId, estimateNumber])
+  @@index([businessId, branchId, status])
   @@index([businessId, repairTicketId])
   @@index([businessId, status])
   @@index([businessId, approvedAt])
@@ -628,6 +756,7 @@ model RepairEstimateAuditLog {
 model RepairPartsUsage {
   id              String    @id @default(uuid()) @db.Uuid
   businessId      String    @map("business_id") @db.Uuid
+  branchId        String    @map("branch_id") @db.Uuid
   repairTicketId  String    @map("repair_ticket_id") @db.Uuid
   inventoryItemId String?   @map("inventory_item_id") @db.Uuid
   technicianId    String?   @map("technician_id") @db.Uuid
@@ -645,10 +774,12 @@ model RepairPartsUsage {
   deletedAt       DateTime? @map("deleted_at")
 
   ticket        RepairTicket   @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  branch        Branch         @relation(fields: [branchId], references: [id], onDelete: Restrict)
   inventoryItem InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
   technician    StaffMember?   @relation("PartsUsageTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
 
   @@index([businessId, repairTicketId])
+  @@index([businessId, branchId, usedAt])
   @@index([businessId, inventoryItemId])
   @@index([businessId, partSku])
   @@index([businessId, usedAt])
@@ -659,6 +790,7 @@ model RepairPartsUsage {
 model InventoryItem {
   id               String    @id @default(uuid()) @db.Uuid
   businessId       String    @map("business_id") @db.Uuid
+  branchId         String    @map("branch_id") @db.Uuid
   vendorId         String?   @map("vendor_id") @db.Uuid
   sku              String
   partName         String    @map("part_name")
@@ -676,11 +808,13 @@ model InventoryItem {
   deletedAt        DateTime? @map("deleted_at")
 
   business   Business                 @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch     Branch                   @relation(fields: [branchId], references: [id], onDelete: Restrict)
   vendor     Vendor?                  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   partsUsage RepairPartsUsage[]
   movements  InventoryStockMovement[]
 
-  @@unique([businessId, sku])
+  @@unique([businessId, branchId, sku])
+  @@index([businessId, branchId, isActive])
   @@index([businessId, partName])
   @@index([businessId, category])
   @@index([businessId, barcode])
@@ -692,6 +826,7 @@ model InventoryItem {
 model InventoryStockMovement {
   id              String                @id @default(uuid()) @db.Uuid
   businessId      String                @map("business_id") @db.Uuid
+  branchId        String                @map("branch_id") @db.Uuid
   inventoryItemId String                @map("inventory_item_id") @db.Uuid
   repairTicketId  String?               @map("repair_ticket_id") @db.Uuid
   actorStaffId    String?               @map("actor_staff_id") @db.Uuid
@@ -706,12 +841,14 @@ model InventoryStockMovement {
   createdAt       DateTime              @default(now()) @map("created_at")
 
   business      Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch        Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
   inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
   repairTicket  RepairTicket? @relation(fields: [repairTicketId], references: [id], onDelete: SetNull)
   actor         StaffMember?  @relation("InventoryMovementActor", fields: [actorStaffId], references: [id], onDelete: SetNull)
   technician    StaffMember?  @relation("InventoryMovementTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
 
   @@index([businessId, inventoryItemId, createdAt])
+  @@index([businessId, branchId, createdAt])
   @@index([businessId, repairTicketId])
   @@index([businessId, technicianId])
   @@index([businessId, type])
@@ -722,6 +859,7 @@ model InventoryStockMovement {
 model RepairInvoice {
   id              String        @id @default(uuid()) @db.Uuid
   businessId      String        @map("business_id") @db.Uuid
+  branchId        String        @map("branch_id") @db.Uuid
   repairTicketId  String        @map("repair_ticket_id") @db.Uuid
   customerId      String        @map("customer_id") @db.Uuid
   estimateId      String?       @map("estimate_id") @db.Uuid
@@ -743,6 +881,7 @@ model RepairInvoice {
   deletedAt       DateTime?     @map("deleted_at")
 
   business      Business                  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch        Branch                    @relation(fields: [branchId], references: [id], onDelete: Restrict)
   ticket        RepairTicket              @relation(fields: [repairTicketId], references: [id], onDelete: Restrict)
   customer      Customer                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
   estimate      RepairEstimate?           @relation(fields: [estimateId], references: [id], onDelete: SetNull)
@@ -753,6 +892,7 @@ model RepairInvoice {
   auditLogs     RepairFinancialAuditLog[]
 
   @@unique([businessId, invoiceNumber])
+  @@index([businessId, branchId, status])
   @@index([businessId, repairTicketId])
   @@index([businessId, customerId])
   @@index([businessId, estimateId])
@@ -787,6 +927,7 @@ model RepairInvoiceItem {
 model RepairPayment {
   id                   String              @id @default(uuid()) @db.Uuid
   businessId           String              @map("business_id") @db.Uuid
+  branchId             String              @map("branch_id") @db.Uuid
   repairTicketId       String              @map("repair_ticket_id") @db.Uuid
   repairInvoiceId      String?             @map("repair_invoice_id") @db.Uuid
   collectedByStaffId   String?             @map("collected_by_staff_id") @db.Uuid
@@ -802,12 +943,14 @@ model RepairPayment {
   deletedAt            DateTime?           @map("deleted_at")
 
   ticket                  RepairTicket              @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  branch                  Branch                    @relation(fields: [branchId], references: [id], onDelete: Restrict)
   invoice                 RepairInvoice?            @relation(fields: [repairInvoiceId], references: [id], onDelete: SetNull)
   collectedBy             StaffMember?              @relation("PaymentCollectedBy", fields: [collectedByStaffId], references: [id], onDelete: SetNull)
   CustomerFinancialLedger CustomerFinancialLedger[]
   RepairFinancialAuditLog RepairFinancialAuditLog[]
 
   @@index([businessId, repairTicketId])
+  @@index([businessId, branchId, collectedAt])
   @@index([businessId, repairInvoiceId])
   @@index([businessId, status])
   @@index([businessId, collectedAt])
@@ -818,6 +961,7 @@ model RepairPayment {
 model CustomerFinancialLedger {
   id              String          @id @default(uuid()) @db.Uuid
   businessId      String          @map("business_id") @db.Uuid
+  branchId        String          @map("branch_id") @db.Uuid
   customerId      String          @map("customer_id") @db.Uuid
   repairInvoiceId String?         @map("repair_invoice_id") @db.Uuid
   repairPaymentId String?         @map("repair_payment_id") @db.Uuid
@@ -833,12 +977,14 @@ model CustomerFinancialLedger {
   createdAt       DateTime        @default(now()) @map("created_at")
 
   business Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch   Branch         @relation(fields: [branchId], references: [id], onDelete: Restrict)
   customer Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
   invoice  RepairInvoice? @relation(fields: [repairInvoiceId], references: [id], onDelete: SetNull)
   payment  RepairPayment? @relation(fields: [repairPaymentId], references: [id], onDelete: SetNull)
   actor    StaffMember?   @relation("LedgerEntryActor", fields: [actorStaffId], references: [id], onDelete: SetNull)
 
   @@index([businessId, customerId, createdAt])
+  @@index([businessId, branchId, createdAt])
   @@index([businessId, repairInvoiceId])
   @@index([businessId, repairPaymentId])
   @@index([businessId, type])
@@ -848,6 +994,7 @@ model CustomerFinancialLedger {
 model RepairFinancialAuditLog {
   id              String               @id @default(uuid()) @db.Uuid
   businessId      String               @map("business_id") @db.Uuid
+  branchId        String               @map("branch_id") @db.Uuid
   repairInvoiceId String?              @map("repair_invoice_id") @db.Uuid
   repairPaymentId String?              @map("repair_payment_id") @db.Uuid
   actorStaffId    String?              @map("actor_staff_id") @db.Uuid
@@ -859,11 +1006,13 @@ model RepairFinancialAuditLog {
   createdAt       DateTime             @default(now()) @map("created_at")
 
   business Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch   Branch         @relation(fields: [branchId], references: [id], onDelete: Restrict)
   invoice  RepairInvoice? @relation(fields: [repairInvoiceId], references: [id], onDelete: SetNull)
   payment  RepairPayment? @relation(fields: [repairPaymentId], references: [id], onDelete: SetNull)
   actor    StaffMember?   @relation("FinancialAuditActor", fields: [actorStaffId], references: [id], onDelete: SetNull)
 
   @@index([businessId, repairInvoiceId, createdAt])
+  @@index([businessId, branchId, createdAt])
   @@index([businessId, repairPaymentId, createdAt])
   @@index([businessId, action])
   @@map("repair_financial_audit_logs")
@@ -917,6 +1066,7 @@ model RepairNote {
 model RepairTicketHandover {
   id                String                   @id @default(uuid()) @db.Uuid
   businessId        String                   @map("business_id") @db.Uuid
+  branchId          String                   @map("branch_id") @db.Uuid
   repairTicketId    String                   @map("repair_ticket_id") @db.Uuid
   vendorId          String?                  @map("vendor_id") @db.Uuid
   actorStaffId      String?                  @map("actor_staff_id") @db.Uuid
@@ -934,11 +1084,13 @@ model RepairTicketHandover {
   createdAt         DateTime                 @default(now()) @map("created_at")
 
   business Business     @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch   Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
   ticket   RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
   vendor   Vendor?      @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   actor    StaffMember? @relation("CustodyHandoverActor", fields: [actorStaffId], references: [id], onDelete: SetNull)
 
   @@index([businessId, repairTicketId, handedOverAt])
+  @@index([businessId, branchId, handedOverAt])
   @@index([businessId, type])
   @@index([businessId, fromHolderType])
   @@index([businessId, toHolderType])
@@ -950,6 +1102,7 @@ model RepairTicketHandover {
 model VendorRepairJob {
   id               String                 @id @default(uuid()) @db.Uuid
   businessId       String                 @map("business_id") @db.Uuid
+  branchId         String                 @map("branch_id") @db.Uuid
   repairTicketId   String                 @map("repair_ticket_id") @db.Uuid
   vendorId         String                 @map("vendor_id") @db.Uuid
   createdByStaffId String?                @map("created_by_staff_id") @db.Uuid
@@ -975,6 +1128,7 @@ model VendorRepairJob {
   deletedAt        DateTime?              @map("deleted_at")
 
   business   Business                @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch     Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
   ticket     RepairTicket            @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
   vendor     Vendor                  @relation(fields: [vendorId], references: [id], onDelete: Restrict)
   createdBy  StaffMember?            @relation("VendorRepairJobCreatedBy", fields: [createdByStaffId], references: [id], onDelete: SetNull)
@@ -982,6 +1136,7 @@ model VendorRepairJob {
   costLogs   VendorRepairCostLog[]
 
   @@index([businessId, repairTicketId])
+  @@index([businessId, branchId, status])
   @@index([businessId, vendorId])
   @@index([businessId, status])
   @@index([businessId, costStatus])
@@ -995,6 +1150,7 @@ model VendorRepairJob {
 model VendorRepairStatusLog {
   id                String                 @id @default(uuid()) @db.Uuid
   businessId        String                 @map("business_id") @db.Uuid
+  branchId          String                 @map("branch_id") @db.Uuid
   vendorRepairJobId String                 @map("vendor_repair_job_id") @db.Uuid
   actorStaffId      String?                @map("actor_staff_id") @db.Uuid
   previousStatus    VendorRepairJobStatus? @map("previous_status")
@@ -1004,10 +1160,12 @@ model VendorRepairStatusLog {
   createdAt         DateTime               @default(now()) @map("created_at")
 
   business Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch   Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
   job      VendorRepairJob @relation(fields: [vendorRepairJobId], references: [id], onDelete: Cascade)
   actor    StaffMember?    @relation("VendorRepairStatusActor", fields: [actorStaffId], references: [id], onDelete: SetNull)
 
   @@index([businessId, vendorRepairJobId, createdAt])
+  @@index([businessId, branchId, createdAt])
   @@index([businessId, nextStatus])
   @@index([businessId, actorStaffId])
   @@map("vendor_repair_status_logs")
@@ -1016,6 +1174,7 @@ model VendorRepairStatusLog {
 model VendorRepairCostLog {
   id                    String                  @id @default(uuid()) @db.Uuid
   businessId            String                  @map("business_id") @db.Uuid
+  branchId              String                  @map("branch_id") @db.Uuid
   vendorRepairJobId     String                  @map("vendor_repair_job_id") @db.Uuid
   actorStaffId          String?                 @map("actor_staff_id") @db.Uuid
   previousEstimatedCost Decimal?                @map("previous_estimated_cost") @db.Decimal(12, 2)
@@ -1031,10 +1190,12 @@ model VendorRepairCostLog {
   createdAt             DateTime                @default(now()) @map("created_at")
 
   business Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch   Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
   job      VendorRepairJob @relation(fields: [vendorRepairJobId], references: [id], onDelete: Cascade)
   actor    StaffMember?    @relation("VendorRepairCostActor", fields: [actorStaffId], references: [id], onDelete: SetNull)
 
   @@index([businessId, vendorRepairJobId, createdAt])
+  @@index([businessId, branchId, createdAt])
   @@index([businessId, nextCostStatus])
   @@index([businessId, actorStaffId])
   @@map("vendor_repair_cost_logs")
@@ -1063,4 +1224,16 @@ model RepairHandoverLog {
   @@index([businessId, repairTicketId, handedOverAt])
   @@index([businessId, vendorId])
   @@map("repair_handover_logs")
+}
+
+model ContactRequest {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  phone     String
+  shopName  String   @map("shop_name")
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("contact_requests")
 }

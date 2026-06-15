@@ -2,6 +2,8 @@ const express = require("express");
 
 const { sendSuccess } = require("../shared/helpers/apiResponse");
 const analyticsRoutes = require("../modules/analytics/routes");
+const branchRoutes = require("../modules/owner/branches/routes");
+const businessRoutes = require("../modules/owner/business/routes");
 const {
   repairAssignmentRoutes,
   technicianRoutes,
@@ -16,6 +18,9 @@ const customerRoutes = require("../modules/customers/routes");
 const handoverRoutes = require("../modules/handover/routes");
 const inventoryRoutes = require("../modules/inventory/routes");
 const repairRoutes = require("../modules/repair/routes");
+const staffRoutes = require("../modules/staff/routes");
+const subscriptionRoutes = require("../modules/owner/subscription/routes");
+const superAdminRoutes = require("../modules/super-admin/routes");
 const {
   repairVendorRoutes,
   vendorRoutes,
@@ -35,6 +40,8 @@ router.get("/", (req, res) =>
 
 router.use("/auth", authRoutes);
 router.use("/analytics", analyticsRoutes);
+router.use("/branches", branchRoutes);
+router.use("/business", businessRoutes);
 router.use("/customers", customerRoutes);
 router.use("/customers", customerBillingRoutes);
 router.use("/repair", handoverRoutes);
@@ -44,6 +51,9 @@ router.use("/repair", repairBillingRoutes);
 router.use("/repair", repairVendorRoutes);
 router.use("/inventory", inventoryRoutes);
 router.use("/billing", billingRoutes);
+router.use("/staff", staffRoutes);
+router.use("/subscription", subscriptionRoutes);
+router.use("/super-admin", superAdminRoutes);
 router.use("/technicians", technicianRoutes);
 router.use("/vendors", vendorRoutes);
 router.use("/repair", repairRoutes);

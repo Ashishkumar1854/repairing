@@ -22,9 +22,12 @@ const authenticate = (req, res, next) => {
       throw new Error("Invalid token payload");
     }
 
+    console.log("[JWT DEBUG] Incoming request:", req.method, req.url, "Payload:", payload);
+
     req.user = {
       staffId: payload.staffId,
       businessId: payload.businessId,
+      branchId: payload.branchId || null,
       role: payload.role,
     };
 

@@ -9,6 +9,7 @@ const staffSummarySelect = {
 const estimateSelect = {
   id: true,
   businessId: true,
+  branchId: true,
   repairTicketId: true,
   estimateNumber: true,
   status: true,
@@ -28,6 +29,7 @@ const estimateSelect = {
   ticket: {
     select: {
       id: true,
+      branchId: true,
       ticketNumber: true,
       title: true,
       status: true,
@@ -88,33 +90,46 @@ const estimateSelect = {
   },
 };
 
-const findTicketForEstimate = (businessId, ticketId) =>
+const withBranchFilter = (where, branchFilter = {}) => {
+  if (branchFilter.branchId) {
+    return {
+      ...where,
+      branchId: branchFilter.branchId,
+    };
+  }
+
+  return where;
+};
+
+const findTicketForEstimate = (businessId, ticketId, branchFilter = {}) =>
   prisma.repairTicket.findFirst({
-    where: {
+    where: withBranchFilter({
       id: ticketId,
       businessId,
       deletedAt: null,
-    },
+    }, branchFilter),
     select: {
       id: true,
       businessId: true,
+      branchId: true,
       status: true,
       ticketNumber: true,
     },
   });
 
-const findEstimateById = (businessId, estimateId) =>
+const findEstimateById = (businessId, estimateId, branchFilter = {}) =>
   prisma.repairEstimate.findFirst({
-    where: {
+    where: withBranchFilter({
       id: estimateId,
       businessId,
       deletedAt: null,
-    },
+    }, branchFilter),
     select: estimateSelect,
   });
 
 const createEstimateWithWorkflow = ({
   businessId,
+  branchFilter = {},
   ticketId,
   actorStaffId,
   estimateNumber,
@@ -125,13 +140,14 @@ const createEstimateWithWorkflow = ({
 }) =>
   prisma.$transaction(async (tx) => {
     const ticket = await tx.repairTicket.findFirst({
-      where: {
+      where: withBranchFilter({
         id: ticketId,
         businessId,
         deletedAt: null,
-      },
+      }, branchFilter),
       select: {
         id: true,
+        branchId: true,
         status: true,
       },
     });
@@ -147,6 +163,7 @@ const createEstimateWithWorkflow = ({
         where: {
           id: ticketId,
           businessId,
+          branchId: ticket.branchId,
           status: currentStatus,
           deletedAt: null,
         },
@@ -203,6 +220,7 @@ const createEstimateWithWorkflow = ({
     const createdEstimate = await tx.repairEstimate.create({
       data: {
         businessId,
+        branchId: ticket.branchId,
         repairTicketId: ticketId,
         createdById: actorStaffId,
         estimateNumber,
@@ -259,6 +277,7 @@ const createEstimateWithWorkflow = ({
       where: {
         id: createdEstimate.id,
         businessId,
+        branchId: ticket.branchId,
       },
       select: estimateSelect,
     });
@@ -271,6 +290,7 @@ const createEstimateWithWorkflow = ({
 
 const approveEstimate = ({
   businessId,
+  branchFilter = {},
   estimateId,
   actorStaffId,
   previousStatus,
@@ -280,13 +300,14 @@ const approveEstimate = ({
 }) =>
   prisma.$transaction(async (tx) => {
     const estimate = await tx.repairEstimate.findFirst({
-      where: {
+      where: withBranchFilter({
         id: estimateId,
         businessId,
         deletedAt: null,
-      },
+      }, branchFilter),
       select: {
         id: true,
+        branchId: true,
         repairTicketId: true,
         status: true,
         validUntil: true,
@@ -311,6 +332,7 @@ const approveEstimate = ({
       where: {
         id: estimateId,
         businessId,
+        branchId: estimate.branchId,
         status: previousStatus,
         deletedAt: null,
       },
@@ -329,6 +351,7 @@ const approveEstimate = ({
       where: {
         id: estimate.repairTicketId,
         businessId,
+        branchId: estimate.branchId,
         status: workflowTransition.fromStatus,
         deletedAt: null,
       },
@@ -370,6 +393,7 @@ const approveEstimate = ({
       where: {
         id: estimateId,
         businessId,
+        branchId: estimate.branchId,
       },
       select: estimateSelect,
     });
@@ -382,6 +406,7 @@ const approveEstimate = ({
 
 const rejectEstimate = ({
   businessId,
+  branchFilter = {},
   estimateId,
   actorStaffId,
   previousStatus,
@@ -391,13 +416,14 @@ const rejectEstimate = ({
 }) =>
   prisma.$transaction(async (tx) => {
     const estimate = await tx.repairEstimate.findFirst({
-      where: {
+      where: withBranchFilter({
         id: estimateId,
         businessId,
         deletedAt: null,
-      },
+      }, branchFilter),
       select: {
         id: true,
+        branchId: true,
         repairTicketId: true,
         status: true,
       },
@@ -416,6 +442,7 @@ const rejectEstimate = ({
       where: {
         id: estimateId,
         businessId,
+        branchId: estimate.branchId,
         status: previousStatus,
         deletedAt: null,
       },
@@ -434,6 +461,7 @@ const rejectEstimate = ({
       where: {
         id: estimate.repairTicketId,
         businessId,
+        branchId: estimate.branchId,
         status: workflowTransition.fromStatus,
         deletedAt: null,
       },
@@ -475,6 +503,7 @@ const rejectEstimate = ({
       where: {
         id: estimateId,
         businessId,
+        branchId: estimate.branchId,
       },
       select: estimateSelect,
     });

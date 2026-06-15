@@ -8,6 +8,7 @@ const dateRangeQuery = z
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
     timezone: z.string().trim().min(1).max(80).optional(),
+    branchId: z.string().uuid().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.period === ANALYTICS_PERIODS.CUSTOM && (!value.from || !value.to)) {
