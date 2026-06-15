@@ -10,7 +10,9 @@ import {
   Linkedin,
   Instagram,
   Facebook,
-  Check
+  Check,
+  Menu,
+  X
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -31,6 +33,7 @@ export const CONTACT_INFO = {
 
 export function ContactPage() {
   const { isAuthenticated } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -98,21 +101,59 @@ export function ContactPage() {
                 </Button>
               </Link>
             ) : (
-              <>
-                <Link to="/login">
-                  <Button variant="secondary" className="h-10 text-xs font-bold px-4">
-                    Sign In
-                  </Button>
-                </Link>
-                <Link to="/login">
-                  <Button className="h-10 text-xs font-bold px-4 shadow-md shadow-blue-200">
-                    Get Started
-                  </Button>
-                </Link>
-              </>
+              <Link to="/login">
+                <Button className="h-10 text-xs font-bold px-4 shadow-md shadow-blue-200">
+                  Sign In
+                </Button>
+              </Link>
             )}
+
+            {/* Mobile Menu Toggle */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 md:hidden transition-colors"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Dropdown */}
+        {mobileMenuOpen && (
+          <div className="border-b border-slate-200 bg-white px-4 py-4 shadow-lg md:hidden animate-in fade-in slide-in-from-top-5 duration-200">
+            <nav className="flex flex-col gap-3 text-sm font-semibold text-slate-600">
+              <Link
+                to="/#features"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-2 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              >
+                Features
+              </Link>
+              <Link
+                to="/#workflow"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-2 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              >
+                Workflow
+              </Link>
+              <Link
+                to="/#pricing"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-2 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              >
+                Pricing
+              </Link>
+              <Link
+                to="/contact"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-2 text-blue-600 bg-blue-50/50 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              >
+                Contact
+              </Link>
+            </nav>
+          </div>
+        )}
       </header>
 
       {/* Main Contact Section */}

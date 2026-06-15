@@ -15,7 +15,9 @@ import {
   Smartphone,
   ShieldCheck,
   HelpCircle,
-  Sparkles
+  Sparkles,
+  Menu,
+  X
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -24,6 +26,7 @@ import { CONTACT_INFO } from "./ContactPage";
 export function LandingPage() {
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -171,14 +174,14 @@ export function LandingPage() {
       {/* Navigation Header */}
       <header className="sticky top-0 z-50 border-b border-slate-200/60 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2">
             <div className="h-9 w-9 rounded-xl bg-[linear-gradient(135deg,#1769aa,#0f9f8f)] grid place-items-center text-white font-black shadow-md shadow-blue-100">
               RF
             </div>
             <span className="text-lg font-black tracking-tight bg-[linear-gradient(135deg,#1769aa,#0f9f8f)] bg-clip-text text-transparent">
               RepairFlow SaaS
             </span>
-          </div>
+          </Link>
 
           <nav className="hidden gap-6 md:flex text-sm font-semibold text-slate-500">
             <a href="#features" className="transition-colors hover:text-slate-900">Features</a>
@@ -196,21 +199,59 @@ export function LandingPage() {
                 </Button>
               </Link>
             ) : (
-              <>
-                <Link to="/login">
-                  <Button variant="secondary" className="h-10 text-xs font-bold px-4">
-                    Sign In
-                  </Button>
-                </Link>
-                <Link to="/login">
-                  <Button className="h-10 text-xs font-bold px-4 shadow-md shadow-blue-200">
-                    Get Started
-                  </Button>
-                </Link>
-              </>
+              <Link to="/login">
+                <Button className="h-10 text-xs font-bold px-4 shadow-md shadow-blue-200">
+                  Sign In
+                </Button>
+              </Link>
             )}
+
+            {/* Mobile Menu Toggle */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 md:hidden transition-colors"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Dropdown */}
+        {mobileMenuOpen && (
+          <div className="border-b border-slate-200 bg-white px-4 py-4 shadow-lg md:hidden animate-in fade-in slide-in-from-top-5 duration-200">
+            <nav className="flex flex-col gap-3 text-sm font-semibold text-slate-600">
+              <a
+                href="#features"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-2 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              >
+                Features
+              </a>
+              <a
+                href="#workflow"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-2 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              >
+                Workflow
+              </a>
+              <a
+                href="#pricing"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-2 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              >
+                Pricing
+              </a>
+              <Link
+                to="/contact"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-2 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              >
+                Contact
+              </Link>
+            </nav>
+          </div>
+        )}
       </header>
 
       {/* Hero Section */}
