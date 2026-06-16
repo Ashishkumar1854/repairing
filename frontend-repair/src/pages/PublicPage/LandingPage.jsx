@@ -41,7 +41,7 @@ export function LandingPage() {
   }, [isAuthenticated, user, navigate]);
 
   const [billingPeriod, setBillingPeriod] = useState("monthly"); // monthly or yearly
-  const [activeTab, setActiveTab] = useState("intake"); // intake, diagnostics, review, billing, handover
+  const [activeTab, setActiveTab] = useState("checkin"); // checkin, review, handover
 
   const features = [
     {
@@ -83,38 +83,24 @@ export function LandingPage() {
   ];
 
   const workflowSteps = {
-    intake: {
-      title: "1. Device Intake & Check-in",
+    checkin: {
+      title: "1. Device & Check-in",
       heading: "Log Device Conditions Instantly",
       description: "When a customer brings in a device, record details (brand, model, serial/IMEI, and aesthetic conditions). Gather details directly on a responsive intake screen optimized for mobile technicians.",
       tip: "Collect customer signatures or device codes to secure shop custody status.",
       badge: "Intake Step"
     },
-    diagnostics: {
-      title: "2. Assign & Diagnose",
-      heading: "Technician Queue Routing",
-      description: "Assign the intake ticket to a specific technician in the branch. Techs view their active queue in real time, record diagnosis logs, specify required spare parts, and estimate labor efforts.",
-      tip: "Technicians cannot consume stock items until the estimate is marked approved.",
-      badge: "Inspection Step"
-    },
     review: {
-      title: "3. QA & Quality Review",
-      heading: "Enforce Standards Before Delivery",
-      description: "Once the repair is completed, it enters the branch QA queue. Admins inspect the final item, check actual costs vs invoices, and approve for delivery or send back for rework.",
+      title: "2. Assign & Quality Review",
+      heading: "Technician Assignment & QA Review",
+      description: "Assign the intake ticket to a technician. Once the repair is completed, admins inspect the final item, check actual costs vs invoices, and approve for delivery or send back for rework.",
       tip: "QA checkpoints prevent premature invoicing errors and ensure high quality.",
       badge: "Quality Check"
     },
-    billing: {
-      title: "4. Invoice & Payment",
-      heading: "Accept Flexible Payment Types",
-      description: "Compile parts cost and labor charges. Apply local taxes (like GST) and custom discounts. Automatically log cash, card, or UPI payments to the customer ledger details.",
-      tip: "Generate invoice PDFs with a single tap for customer records.",
-      badge: "Finance Step"
-    },
     handover: {
-      title: "5. Custody Handover",
-      heading: "Safe Release of Devices",
-      description: "Log device deliveries directly to the custody log database. Record which staff member delivered the device to the customer, closing the ticket lifecycle permanently.",
+      title: "3. Payment & Handover",
+      heading: "Invoice, Payment & Safe Release",
+      description: "Compile parts cost and labor charges, apply local taxes or discounts, collect payments, and log device deliveries directly to the custody log database to safely release the device.",
       tip: "Closed tickets are automatically recorded in monthly analytics summaries.",
       badge: "Handover Step"
     }
