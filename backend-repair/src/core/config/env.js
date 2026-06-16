@@ -24,6 +24,7 @@ const envSchema = z.object({
   OWNER_PASSWORD: z.string().min(8),
   SEED_ADMIN_EMAIL: z.string().trim().email().transform((value) => value.toLowerCase()).optional(),
   SEED_ADMIN_PASSWORD: z.string().min(8).optional(),
+  PAY_WHATSAPP: z.string().min(5).optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

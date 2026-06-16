@@ -53,6 +53,24 @@ const ensureBusiness = (slug, name) =>
     create: { name, slug, type: "REPAIR_SHOP" },
   });
 
+const ensureActiveSubscription = (businessId) =>
+  prisma.subscription.upsert({
+    where: { businessId },
+    update: {
+      plan: "GROWTH",
+      status: "DONE",
+      startsAt: new Date(),
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    },
+    create: {
+      businessId,
+      plan: "GROWTH",
+      status: "DONE",
+      startsAt: new Date(),
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    },
+  });
+
 const ensureBranch = (businessId, code = "MAIN") =>
   prisma.branch.upsert({
     where: { businessId_code: { businessId, code } },
@@ -139,6 +157,8 @@ const createTicket = async (token, title = "Integration Repair") => {
 beforeAll(async () => {
   state.business = await ensureBusiness("integration-tenant-a", "Integration Tenant A");
   state.tenantB = await ensureBusiness("integration-tenant-b", "Integration Tenant B");
+  await ensureActiveSubscription(state.business.id);
+  await ensureActiveSubscription(state.tenantB.id);
   state.branch = await ensureBranch(state.business.id);
   state.tenantBBranch = await ensureBranch(state.tenantB.id);
 
@@ -173,6 +193,41 @@ afterAll(async () => {
 });
 
 describe("Authentication", () => {
+  test("public owner signup creates a tenant with pending subscription", async () => {
+    const ownerEmail = `signup.owner.${runId}@repair.test`;
+    const signup = await api().post("/api/v1/auth/signup").send({
+      name: "Signup Owner",
+      mobile: "919999999999",
+      shopName: `Signup Repair ${runId}`,
+      address: "Signup Shop Address",
+      email: ownerEmail,
+      confirmEmail: ownerEmail,
+      password,
+      confirmPassword: password,
+    });
+
+    expect(signup.status).toBe(201);
+    expectSuccessEnvelope(signup);
+    expect(signup.body.data.owner.role).toBe("OWNER");
+    expect(signup.body.data.subscription.status).toBe("PENDING");
+
+    const login = await api().post("/api/v1/auth/login").send({
+      email: ownerEmail,
+      password,
+    });
+
+    expect(login.status).toBe(200);
+    expect(login.body.data.user.role).toBe("OWNER");
+    expect(login.body.data.user.business.subscription.isServiceActive).toBe(false);
+
+    const subscription = await api()
+      .get("/api/v1/subscription/current")
+      .set(authHeader(login.body.data.tokens.accessToken));
+
+    expect(subscription.status).toBe(200);
+    expect(subscription.body.data.subscription.status).toBe("PENDING");
+  });
+
   test("login, me, refresh, and logout work through the public auth API", async () => {
     const login = await api().post("/api/v1/auth/login").send({
       email: state.staff.ADMIN.email,

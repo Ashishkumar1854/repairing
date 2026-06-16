@@ -56,6 +56,23 @@ const countActiveBranches = (businessId) =>
     },
   });
 
+const countBranches = (businessId) =>
+  prisma.branch.count({
+    where: {
+      businessId,
+      deletedAt: null,
+    },
+  });
+
+const findSubscription = (businessId) =>
+  prisma.subscription.findUnique({
+    where: { businessId },
+    select: {
+      plan: true,
+      status: true,
+    },
+  });
+
 const createBranch = (businessId, data) =>
   prisma.$transaction(async (tx) => {
     if (data.isMainBranch) {
@@ -145,6 +162,8 @@ module.exports = {
   findById,
   findByCode,
   countActiveBranches,
+  countBranches,
+  findSubscription,
   createBranch,
   updateBranch,
   setBranchStatus,

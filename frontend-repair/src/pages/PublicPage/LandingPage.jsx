@@ -109,10 +109,11 @@ export function LandingPage() {
   const pricingPlans = [
     {
       name: "Starter Plan",
-      desc: "Ideal for single-location local repair workshops.",
-      price: billingPeriod === "monthly" ? "$29" : "$22",
+      desc: "Ideal for new local repair workshops starting on SaaS.",
+      price: billingPeriod === "monthly" ? "₹299" : "₹399",
       features: [
-        "1 Branch Location context",
+        "2 Branch Location context",
+        "First 50 repair devices free",
         "Up to 3 active staff accounts",
         "Standard intake & ticket tracking",
         "Basic invoicing & ledger logs",
@@ -124,7 +125,7 @@ export function LandingPage() {
     {
       name: "Growth Plan",
       desc: "Best for multi-branch repair businesses and expanding operations.",
-      price: billingPeriod === "monthly" ? "$79" : "$59",
+      price: billingPeriod === "monthly" ? "₹399" : "₹499",
       features: [
         "Unlimited Branch locations context",
         "Up to 15 active staff accounts",
@@ -134,7 +135,7 @@ export function LandingPage() {
         "QA Queues & custody handover logs",
         "Priority live chat support"
       ],
-      cta: "Start Growth Trial",
+      cta: "Payment Now",
       popular: true
     },
     {
@@ -149,14 +150,14 @@ export function LandingPage() {
         "24/7 account manager & phone support",
         "Custom SLA guidelines"
       ],
-      cta: "Contact Enterprise Sales",
+      cta: "Payment Now",
       popular: false
     }
   ];
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 antialiased font-sans">
-      
+
       {/* Navigation Header */}
       <header className="sticky top-0 z-50 border-b border-slate-200/60 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -247,7 +248,7 @@ export function LandingPage() {
         <div className="absolute top-20 right-1/4 -z-10 h-96 w-96 rounded-full bg-teal-100/30 blur-3xl" />
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-          
+
           {/* SaaS Release Badge */}
           <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3.5 py-1 text-xs font-bold text-blue-600 border border-blue-100 shadow-xs mb-6">
             <Sparkles className="h-3.5 w-3.5 text-blue-500 animate-pulse" />
@@ -282,7 +283,7 @@ export function LandingPage() {
           {/* Mock Dashboard Representation */}
           <div className="mx-auto mt-16 max-w-5xl rounded-2xl border border-slate-200 bg-white p-3 shadow-xl sm:p-4">
             <div className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50 shadow-inner">
-              
+
               {/* Fake App Header */}
               <div className="flex h-11 items-center justify-between border-b border-slate-200 bg-white px-4">
                 <div className="flex items-center gap-2">
@@ -303,7 +304,7 @@ export function LandingPage() {
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-xs">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Approved Quotes</p>
-                  <p className="mt-1 text-xl font-extrabold text-slate-800">$3,420.50</p>
+                  <p className="mt-1 text-xl font-extrabold text-slate-800">₹3,420.50</p>
                   <div className="mt-2 h-1.5 w-full rounded-full bg-emerald-100 overflow-hidden"><div className="h-full w-1/2 rounded-full bg-emerald-500" /></div>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-xs">
@@ -350,7 +351,7 @@ export function LandingPage() {
       {/* Features Grid */}
       <section id="features" className="py-20 bg-white border-y border-slate-200/40">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          
+
           <div className="text-center">
             <h2 className="text-xs font-black text-blue-600 uppercase tracking-widest">Built-In Utilities</h2>
             <p className="mt-3 text-3xl font-black text-slate-900 sm:text-4xl">Everything required to operate your shops</p>
@@ -380,7 +381,7 @@ export function LandingPage() {
       {/* Interactive Workflow Section */}
       <section id="workflow" className="py-20 bg-slate-50">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          
+
           <div className="text-center">
             <h2 className="text-xs font-black text-blue-600 uppercase tracking-widest">ERP Steps Visualizer</h2>
             <p className="mt-3 text-3xl font-black text-slate-900 sm:text-4xl">The standard repair shop lifecycle</p>
@@ -395,11 +396,10 @@ export function LandingPage() {
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
-                className={`rounded-full px-4 py-2 text-xs font-bold border transition-all ${
-                  activeTab === key
-                    ? "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                }`}
+                className={`rounded-full px-4 py-2 text-xs font-bold border transition-all ${activeTab === key
+                  ? "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                  }`}
               >
                 {workflowSteps[key].title}
               </button>
@@ -416,7 +416,7 @@ export function LandingPage() {
                   </span>
                   <h3 className="text-xl font-extrabold text-slate-900">{workflowSteps[activeTab].heading}</h3>
                   <p className="text-xs text-slate-500 leading-relaxed">{workflowSteps[activeTab].description}</p>
-                  
+
                   <div className="rounded-lg bg-slate-50 border border-slate-200/60 p-3 text-xs text-slate-600 leading-normal">
                     <strong>Pro tip:</strong> {workflowSteps[activeTab].tip}
                   </div>
@@ -437,26 +437,24 @@ export function LandingPage() {
       {/* Pricing Section */}
       <section id="pricing" className="py-20 bg-white border-y border-slate-200/40">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          
+
           <div className="text-center">
             <h2 className="text-xs font-black text-blue-600 uppercase tracking-widest">Pricing Structure</h2>
             <p className="mt-3 text-3xl font-black text-slate-900 sm:text-4xl">Transparent, predictable pricing plans</p>
-            
+
             {/* Billing Period Toggle */}
             <div className="mt-6 inline-flex rounded-full bg-slate-100 p-1 border border-slate-200">
               <button
                 onClick={() => setBillingPeriod("monthly")}
-                className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-                  billingPeriod === "monthly" ? "bg-white text-blue-600 shadow-xs" : "text-slate-500"
-                }`}
+                className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${billingPeriod === "monthly" ? "bg-white text-blue-600 shadow-xs" : "text-slate-500"
+                  }`}
               >
                 Monthly Billing
               </button>
               <button
                 onClick={() => setBillingPeriod("yearly")}
-                className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-                  billingPeriod === "yearly" ? "bg-white text-blue-600 shadow-xs" : "text-slate-500"
-                }`}
+                className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${billingPeriod === "yearly" ? "bg-white text-blue-600 shadow-xs" : "text-slate-500"
+                  }`}
               >
                 Yearly Billing (20% Off)
               </button>
@@ -467,7 +465,7 @@ export function LandingPage() {
           <div className="mt-14 grid gap-8 md:grid-cols-3 items-stretch">
             {pricingPlans.map((plan, idx) => (
               <Card key={idx} className={`relative border-slate-200 shadow-sm flex flex-col justify-between overflow-hidden ${plan.popular ? 'border-2 border-blue-500 shadow-md md:-translate-y-2' : ''}`}>
-                
+
                 {plan.popular && (
                   <div className="absolute top-0 right-0 rounded-bl-lg bg-blue-500 px-3 py-1 text-[10px] font-bold text-white uppercase tracking-wider">
                     Most Popular
@@ -478,7 +476,7 @@ export function LandingPage() {
                   <div>
                     <h3 className="text-lg font-black text-slate-900">{plan.name}</h3>
                     <p className="mt-2 text-xs text-slate-500">{plan.desc}</p>
-                    
+
                     <div className="mt-5 flex items-baseline gap-1">
                       <span className="text-4xl font-extrabold text-slate-900">{plan.price}</span>
                       {plan.price !== "Custom" && (
@@ -516,14 +514,14 @@ export function LandingPage() {
       {/* Testimonials */}
       <section id="testimonials" className="py-20 bg-slate-50">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          
+
           <div className="text-center">
             <h2 className="text-xs font-black text-blue-600 uppercase tracking-widest">Customer Feedback</h2>
             <p className="mt-3 text-3xl font-black text-slate-900 sm:text-4xl">Trusted by repair professionals worldwide</p>
           </div>
 
           <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            
+
             <Card className="border-slate-200/60 shadow-sm bg-white">
               <CardContent className="p-6 space-y-4">
                 <div className="flex gap-0.5 text-yellow-400">

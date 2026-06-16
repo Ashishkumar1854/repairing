@@ -1,5 +1,6 @@
 const AppError = require("../../../shared/errors/AppError");
 const branchRepository = require("./repository");
+const { STARTER_BRANCH_LIMIT } = require("../../../shared/utils/subscription");
 
 const assertOwner = (user) => {
   if (user.role !== "OWNER") {
@@ -31,6 +32,14 @@ const ensureCodeAvailable = async (businessId, code, currentBranchId = null) => 
 
 const create = async (user, payload) => {
   assertOwner(user);
+  const subscription = await branchRepository.findSubscription(user.businessId);
+  const branchCount = await branchRepository.countBranches(user.businessId);
+  if (subscription?.plan === "STARTER" && branchCount >= STARTER_BRANCH_LIMIT) {
+    throw new AppError("Starter plan supports up to 2 branches. Please upgrade to add more branches.", 402, {
+      code: "STARTER_BRANCH_LIMIT_REACHED",
+    });
+  }
+
   if (!payload.code) {
     const prefix = payload.name.replace(/[^a-zA-Z]/g, "").substring(0, 4).toUpperCase() || "BR";
     const randomSuffix = Math.floor(100 + Math.random() * 900);

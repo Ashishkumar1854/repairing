@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { authApi } from "@/services/modules";
-import { clearSession, getAccessToken, getStoredUser, persistSession } from "@/services/session";
+import { clearSession, getAccessToken, getStoredUser, persistSession, updateStoredUser } from "@/services/session";
 
 const AuthContext = createContext(null);
 
@@ -10,10 +10,34 @@ function normalizeRole(role) {
   return role;
 }
 
+function isServiceActive(user) {
+  if (!user || user.role === "SUPER_ADMIN") return true;
+  return Boolean(user.business?.subscription?.isServiceActive);
+}
+
 export function AuthProvider({ children }) {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [booting, setBooting] = useState(true);
+
+  const updateSubscription = useCallback((subscription) => {
+    setUser((currentUser) => {
+      if (!currentUser?.business) return currentUser;
+      if (JSON.stringify(currentUser.business.subscription) === JSON.stringify(subscription)) {
+        return currentUser;
+      }
+
+      const nextUser = {
+        ...currentUser,
+        business: {
+          ...currentUser.business,
+          subscription,
+        },
+      };
+      updateStoredUser(nextUser);
+      return nextUser;
+    });
+  }, []);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -40,9 +64,12 @@ export function AuthProvider({ children }) {
       persistSession(response.data.user, response.data.tokens);
       setUser(response.data.user);
       const role = normalizeRole(response.data.user?.role);
+      const serviceActive = isServiceActive(response.data.user);
       navigate(
         role === "SUPER_ADMIN"
           ? "/super-admin/businesses"
+          : role === "OWNER" && !serviceActive
+          ? "/subscription"
           : ["OWNER", "ADMIN"].includes(role)
           ? "/branch/portal"
           : "/dashboard",
@@ -70,8 +97,10 @@ export function AuthProvider({ children }) {
         if (!user) return false;
         return roles.includes(normalizeRole(user.role));
       },
+      isServiceActive: isServiceActive(user),
+      updateSubscription,
     }),
-    [booting, loginMutation, navigate, user]
+    [booting, loginMutation, navigate, updateSubscription, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

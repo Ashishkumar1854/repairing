@@ -21,10 +21,15 @@ const businessListSelect = {
   },
   subscription: {
     select: {
+      id: true,
+      businessId: true,
       plan: true,
       status: true,
       startsAt: true,
       expiresAt: true,
+      metadata: true,
+      createdAt: true,
+      updatedAt: true,
     },
   },
 };
@@ -66,6 +71,17 @@ const updateStatus = (businessId, status) =>
     select: businessListSelect,
   });
 
+const upsertSubscription = (businessId, data) =>
+  prisma.subscription.upsert({
+    where: { businessId },
+    update: data,
+    create: {
+      businessId,
+      ...data,
+    },
+    select: businessListSelect.subscription.select,
+  });
+
 const createContactRequest = (data) =>
   prisma.contactRequest.create({
     data: {
@@ -87,6 +103,7 @@ module.exports = {
   listBusinesses,
   findBusiness,
   updateStatus,
+  upsertSubscription,
   createContactRequest,
   listContactRequests,
 };

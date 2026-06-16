@@ -1,6 +1,7 @@
 import { del, get, patch, post } from "@/services/api";
 
 export const authApi = {
+  signup: (payload) => post("/auth/signup", payload),
   login: (payload) => post("/auth/login", payload),
   me: () => get("/auth/me"),
   logout: () => post("/auth/logout"),
@@ -98,6 +99,8 @@ export const staffApi = {
 
 export const subscriptionApi = {
   current: () => get("/subscription/current"),
+  startTrial: () => post("/subscription/start-trial"),
+  requestPayment: (payload) => post("/subscription/payment-request", payload),
 };
 
 export const superAdminApi = {
@@ -105,6 +108,7 @@ export const superAdminApi = {
   business: (id) => get(`/super-admin/businesses/${id}`),
   suspend: (id) => patch(`/super-admin/businesses/${id}/suspend`),
   activate: (id) => patch(`/super-admin/businesses/${id}/activate`),
+  updateSubscription: (id, payload) => patch(`/super-admin/businesses/${id}/subscription`, payload),
   submitContactRequest: (payload) => post("/super-admin/contacts", payload),
   contacts: () => get("/super-admin/contacts"),
 };

@@ -8,6 +8,28 @@ const loginSchema = z.object({
   }),
 });
 
+const signupSchema = z.object({
+  body: z
+    .object({
+      name: z.string().trim().min(1, "Name is required").max(120),
+      mobile: z.string().trim().min(7, "Mobile number is required").max(20),
+      shopName: z.string().trim().min(1, "Shop name is required").max(160),
+      address: z.string().trim().min(1, "Address is required").max(500),
+      email: z.string().trim().email().transform((value) => value.toLowerCase()),
+      confirmEmail: z.string().trim().email().transform((value) => value.toLowerCase()),
+      password: z.string().min(8).max(256),
+      confirmPassword: z.string().min(8).max(256),
+    })
+    .refine((value) => value.email === value.confirmEmail, {
+      message: "Email and confirm email must match",
+      path: ["confirmEmail"],
+    })
+    .refine((value) => value.password === value.confirmPassword, {
+      message: "Password and confirm password must match",
+      path: ["confirmPassword"],
+    }),
+});
+
 const refreshSchema = z.object({
   body: z.object({
     refreshToken: z.string().min(20),
@@ -42,6 +64,7 @@ const branchesByEmailSchema = z.object({
 
 module.exports = {
   loginSchema,
+  signupSchema,
   refreshSchema,
   forgotPasswordSchema,
   resetPasswordSchema,

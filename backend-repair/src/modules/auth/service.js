@@ -9,6 +9,7 @@ const {
 } = require("../../shared/utils/jwt");
 const authRepository = require("./repository");
 const { AUTH_ERRORS } = require("./constants");
+const { shapeSubscription } = require("../../shared/utils/subscription");
 
 const toAuthUser = (staff) => ({
   staffId: staff.id,
@@ -32,6 +33,7 @@ const toPublicStaff = (staff) => ({
         slug: staff.business.slug,
         type: staff.business.type,
         status: staff.business.status,
+        subscription: shapeSubscription(staff.business.subscription),
       }
     : null,
   branch: staff.branch
@@ -93,6 +95,92 @@ const assertUsableStaff = (staff) => {
 
 const hashResetToken = (token) =>
   crypto.createHash("sha256").update(token).digest("hex");
+
+const slugify = (value) => {
+  const slug = String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || `repair-shop-${Date.now()}`;
+};
+
+const getAvailableSlug = async (shopName) => {
+  const baseSlug = slugify(shopName);
+  let candidate = baseSlug;
+  let suffix = 1;
+
+  while (await authRepository.findBusinessBySlug(candidate)) {
+    suffix += 1;
+    candidate = `${baseSlug}-${suffix}`;
+  }
+
+  return candidate;
+};
+
+const signup = async ({ name, mobile, shopName, address, email, password }) => {
+  const matchingStaff = await authRepository.findStaffByEmail(email);
+  if (matchingStaff.length > 0) {
+    throw new AppError("An account already exists with this email", 409, {
+      code: "EMAIL_ALREADY_REGISTERED",
+    });
+  }
+
+  const passwordHash = await hashPassword(password);
+  const slug = await getAvailableSlug(shopName);
+
+  const result = await authRepository.createOwnerTenant({
+    business: {
+      name: shopName,
+      slug,
+      type: "REPAIR_SHOP",
+      status: "ACTIVE",
+      email,
+      phone: mobile,
+      address,
+      metadata: {
+        signupSource: "public_owner_signup",
+      },
+    },
+    branch: {
+      name: "Main Branch",
+      code: "MAIN",
+      phone: mobile,
+      email,
+      address,
+      isMainBranch: true,
+      status: "ACTIVE",
+    },
+    owner: {
+      branchId: null,
+      fullName: name,
+      email,
+      phone: mobile,
+      passwordHash,
+      role: "OWNER",
+      isActive: true,
+    },
+    subscription: {
+      plan: "STARTER",
+      status: "PENDING",
+      metadata: {
+        signupSource: "public_owner_signup",
+      },
+    },
+  });
+
+  return {
+    business: {
+      id: result.business.id,
+      name: result.business.name,
+      slug: result.business.slug,
+      status: result.business.status,
+    },
+    owner: toPublicStaff(result.owner),
+    subscription: shapeSubscription(result.subscription),
+  };
+};
 
 const login = async ({ email, password, branchName }) => {
   const matchingStaff = await authRepository.findStaffByEmail(email);
@@ -311,6 +399,7 @@ const getBranchesByEmail = async (email) => {
 };
 
 module.exports = {
+  signup,
   login,
   refresh,
   me,

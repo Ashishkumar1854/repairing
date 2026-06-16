@@ -145,7 +145,16 @@ export function Login() {
               {form.formState.isSubmitting ? "Signing in..." : "Login to Portal"}
             </Button>
 
-            <div className="text-center pt-4 border-t border-slate-100 mt-6">
+            <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100 mt-6 text-xs">
+              <Link to="/signup" className="font-bold text-[#1769aa] hover:underline">
+                Owner signup
+              </Link>
+              <Link to="/forgot-password" className="font-bold text-slate-500 hover:text-slate-800 hover:underline">
+                Forgot password?
+              </Link>
+            </div>
+
+            <div className="text-center">
               <Link to="/" className="text-xs text-slate-400 hover:text-slate-700 transition-colors font-bold inline-flex items-center gap-1">
                 ← Back to homepage
               </Link>
@@ -156,4 +165,3 @@ export function Login() {
     </main>
   );
 }
-

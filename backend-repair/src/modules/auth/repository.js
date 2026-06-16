@@ -22,6 +22,14 @@ const staffSelect = {
       type: true,
       status: true,
       deletedAt: true,
+      subscription: {
+        select: {
+          plan: true,
+          status: true,
+          startsAt: true,
+          expiresAt: true,
+        },
+      },
     },
   },
   branch: {
@@ -53,6 +61,14 @@ const publicStaffSelect = {
       slug: true,
       type: true,
       status: true,
+      subscription: {
+        select: {
+          plan: true,
+          status: true,
+          startsAt: true,
+          expiresAt: true,
+        },
+      },
     },
   },
   branch: {
@@ -174,10 +190,62 @@ const findStaffByResetTokenHash = (passwordResetTokenHash) =>
     select: staffSelect,
   });
 
+const findBusinessBySlug = (slug) =>
+  prisma.business.findUnique({
+    where: { slug },
+    select: {
+      id: true,
+    },
+  });
+
+const createOwnerTenant = ({ business, branch, owner, subscription }) =>
+  prisma.$transaction(async (tx) => {
+    const createdBusiness = await tx.business.create({
+      data: business,
+    });
+
+    const createdBranch = await tx.branch.create({
+      data: {
+        ...branch,
+        businessId: createdBusiness.id,
+      },
+    });
+
+    const createdOwner = await tx.staffMember.create({
+      data: {
+        ...owner,
+        businessId: createdBusiness.id,
+      },
+      select: publicStaffSelect,
+    });
+
+    const createdSubscription = await tx.subscription.create({
+      data: {
+        ...subscription,
+        businessId: createdBusiness.id,
+      },
+    });
+
+    return {
+      business: createdBusiness,
+      branch: createdBranch,
+      owner: {
+        ...createdOwner,
+        business: {
+          ...createdOwner.business,
+          subscription: createdSubscription,
+        },
+      },
+      subscription: createdSubscription,
+    };
+  });
+
 module.exports = {
   findStaffByEmail,
   findStaffById,
   findStaffByIdForBusiness,
+  findBusinessBySlug,
+  createOwnerTenant,
   updateRefreshToken,
   clearRefreshToken,
   updatePassword,

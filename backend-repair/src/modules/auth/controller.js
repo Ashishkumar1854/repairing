@@ -11,6 +11,16 @@ const login = asyncHandler(async (req, res) => {
   });
 });
 
+const signup = asyncHandler(async (req, res) => {
+  const result = await authService.signup(req.validatedData.body);
+
+  return sendSuccess(res, {
+    statusCode: 201,
+    message: "Owner signup completed",
+    data: result,
+  });
+});
+
 const refresh = asyncHandler(async (req, res) => {
   const result = await authService.refresh(req.validatedData.body);
 
@@ -77,6 +87,7 @@ const getBranchesByEmail = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  signup,
   login,
   refresh,
   me,

@@ -1,8 +1,10 @@
 const AppError = require("../../shared/errors/AppError");
+const { shapeSubscription } = require("../../shared/utils/subscription");
 const superAdminRepository = require("./repository");
 
 const shapeBusiness = (business) => ({
   ...business,
+  subscription: business.subscription ? shapeSubscription(business.subscription) : null,
   owner: business.staff?.[0] || null,
   staff: undefined,
 });
@@ -39,6 +41,33 @@ const setStatus = async ({ businessId: actorBusinessId }, businessId, status) =>
 const suspendBusiness = (actor, businessId) => setStatus(actor, businessId, "SUSPENDED");
 const activateBusiness = (actor, businessId) => setStatus(actor, businessId, "ACTIVE");
 
+const updateBusinessSubscription = async (businessId, data) => {
+  const { business } = await getBusiness(businessId);
+  const currentSubscription = business.subscription;
+  const updateData = {};
+
+  if (data.plan !== undefined) updateData.plan = data.plan;
+  if (data.status !== undefined) updateData.status = data.status;
+  if (data.startsAt !== undefined) updateData.startsAt = data.startsAt;
+  if (data.expiresAt !== undefined) updateData.expiresAt = data.expiresAt;
+
+  if (data.addDays !== undefined) {
+    const now = new Date();
+    const currentExpiry = currentSubscription?.expiresAt
+      ? new Date(currentSubscription.expiresAt)
+      : null;
+    const baseDate = currentExpiry && currentExpiry.getTime() > now.getTime() ? currentExpiry : now;
+    updateData.expiresAt = new Date(baseDate.getTime() + data.addDays * 24 * 60 * 60 * 1000);
+  }
+
+  if (!updateData.startsAt && !currentSubscription?.startsAt) {
+    updateData.startsAt = new Date();
+  }
+
+  const subscription = await superAdminRepository.upsertSubscription(businessId, updateData);
+  return { subscription: shapeSubscription(subscription) };
+};
+
 const createContactRequest = async (data) => {
   return superAdminRepository.createContactRequest(data);
 };
@@ -53,6 +82,7 @@ module.exports = {
   getBusiness,
   suspendBusiness,
   activateBusiness,
+  updateBusinessSubscription,
   createContactRequest,
   listContactRequests,
 };

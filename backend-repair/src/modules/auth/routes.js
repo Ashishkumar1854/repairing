@@ -5,6 +5,7 @@ const authenticate = require("../../core/middleware/authenticate");
 const { loginRateLimiter } = require("../../core/middleware/authRateLimiter");
 const authController = require("./controller");
 const {
+  signupSchema,
   loginSchema,
   refreshSchema,
   forgotPasswordSchema,
@@ -15,6 +16,7 @@ const {
 
 const router = express.Router();
 
+router.post("/signup", loginRateLimiter, validate(signupSchema), authController.signup);
 router.post("/login", loginRateLimiter, validate(loginSchema), authController.login);
 router.get("/branches-by-email", validate(branchesByEmailSchema), authController.getBranchesByEmail);
 router.post("/refresh", validate(refreshSchema), authController.refresh);

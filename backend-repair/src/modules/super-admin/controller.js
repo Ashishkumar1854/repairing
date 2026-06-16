@@ -38,6 +38,18 @@ const activateBusiness = asyncHandler(async (req, res) => {
   });
 });
 
+const updateBusinessSubscription = asyncHandler(async (req, res) => {
+  const result = await superAdminService.updateBusinessSubscription(
+    req.validatedData.params.id,
+    req.validatedData.body
+  );
+
+  return sendSuccess(res, {
+    message: "Business subscription updated",
+    data: result,
+  });
+});
+
 const createContactRequest = asyncHandler(async (req, res) => {
   const result = await superAdminService.createContactRequest(req.validatedData.body);
 
@@ -61,6 +73,7 @@ module.exports = {
   getBusiness,
   suspendBusiness,
   activateBusiness,
+  updateBusinessSubscription,
   createContactRequest,
   listContactRequests,
 };

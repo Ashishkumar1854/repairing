@@ -26,6 +26,10 @@ export function persistSession(user, tokens) {
   localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
 }
 
+export function updateStoredUser(user) {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
 export function clearSession() {
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(ACCESS_TOKEN_KEY);
